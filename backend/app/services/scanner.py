@@ -4,7 +4,25 @@ from app.core.config import settings
 
 _session = boto3.Session(region_name=settings.AWS_REGION)
 
-
+def get_ec2() -> dict[str, dict[str, Any]]:
+    ec2 = _session.client("ec2")
+    instances = {}
+    paginator = ec2.get_paginator("describe_instances")
+    for page in paginator.paginate():
+        for reservation in page["Reservations"]:
+            for instance in reservation["Instances"]:
+                iid = instance["InstanceId"]
+                instances[iid] = {
+                    "_type": "aws_instance",
+                    "id": iid,
+                    "instance_type": instance.get("InstanceType", ""),
+                    "ami": instance.get("ImageId", ""),
+                    "state": instance["State"]["Name"],
+                    "subnet_id": instance.get("SubnetId", ""),
+                    "vpc_id": instance.get("VpcId", ""),
+                    "key_name": instance.get("KeyName", ""),
+                }
+    return instances
 
 def get_s3() -> dict[str, dict[str, Any]]:
     s3 = _session.client("s3")
@@ -34,5 +52,6 @@ def get_s3() -> dict[str, dict[str, Any]]:
         }
     return buckets
 
-
+# print(get_s3())
+print(get_ec2())
 
