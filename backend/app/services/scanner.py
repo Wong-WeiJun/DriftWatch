@@ -85,8 +85,26 @@ def get_iam_roles() -> dict[str, dict[str, Any]]:
             }
     return roles
 
+def get_rds() -> dict[str, dict[str, Any]]:
+    rds = _session.client("rds")
+    instances = {}
+    paginator =rds.get_paginator("describe_db_instances")
+    for page in paginator.paginate():
+        for db in page["DBInstances"]:
+            dbid = db["DBInstanceIdentifier"]
+            instances[dbid] = {
+                "_type": "aws_rds_instances",
+                "id": dbid,
+                "instance_class": db.get("DBInstanceClass", ""),
+                "engine": db.get("Engine", ""),
+                "engine_version": db.get("EngineVersion", ""),
+                "multi_az": str(db.get("MultiAZ", False)),
+                "publicly_accessible": str(db.get("PubliclyAccessible", False)),
+                "deletion_protection": str(db.get("DeletionProtection", False)), 
+            }
+    return instances
 
 
 print(get_s3())
-print(get_iam_roles())
+print(get_rds())
 
