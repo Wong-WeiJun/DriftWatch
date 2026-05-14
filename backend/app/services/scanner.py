@@ -29,7 +29,6 @@ def get_s3() -> dict[str, dict[str, Any]]:
     buckets ={}
     for bucket in s3.list_buckets().get("Buckets", []):
         name = bucket["Name"]
-        versioning = "Disabled"
         try:
             v = s3.get_bucket_versioning(Bucket=name)
             versioning = v.get("Status", "Disabled")
@@ -70,7 +69,24 @@ def get_security_groups() -> dict[str, dict[str, Any]]:
             }
     return sgs
 
+def get_iam_roles() -> dict[str, dict[str, Any]]:
+    iam = _session.client("iam")
+    roles = {}
+    paginator = iam.get_paginator("list_roles")
+    for page in paginator.paginate():
+        for role in page["Roles"]:
+            name = role["RoleName"]
+            roles[name]= {
+                "_type": "aws_iam_role",
+                "id": name,
+                "name": name,
+                "path": role.get("Path", "/"),
+                "max_session_duration": str(role.get("MaxSessionDuration", 3600)),
+            }
+    return roles
 
-# print(get_s3())
-print(get_security_groups())
+
+
+print(get_s3())
+print(get_iam_roles())
 
