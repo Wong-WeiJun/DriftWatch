@@ -52,6 +52,25 @@ def get_s3() -> dict[str, dict[str, Any]]:
         }
     return buckets
 
+def get_security_groups() -> dict[str, dict[str, Any]]:
+    ec2 = _session.client("ec2")
+    sgs = {}
+    paginator = ec2.get_paginator("describe_security_groups")
+    for page in paginator.paginate():
+        for sg in page["SecurityGroups"]:
+            sid = sg["GroupId"]
+            sgs[sid] = {
+                "_type": "aws_security_group",
+                "id": sid,
+                "name": sg.get("GroupName", ""),
+                "desc": sg.get("Description", ""),
+                "vpc_id": sg.get("VpcId", ""),
+                "ingress_rule_count": str(len(sg.get("IpPermissions", []))),
+                "egress_rule_count": str(len(sg.get("IpPermissionsEgress", []))),
+            }
+    return sgs
+
+
 # print(get_s3())
-print(get_ec2())
+print(get_security_groups())
 
