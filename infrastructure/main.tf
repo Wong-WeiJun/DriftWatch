@@ -12,4 +12,19 @@ provider "aws" {
   profile = "default"
 }
 
+data "aws_caller_identity" "acc" {}                               #get user id
+data "aws_availability_zones" "available" { state = "available" } #get AZs where state=available
+
+locals {
+  account_id = data.aws_caller_identity.acc.account_id
+  azs        = slice(data.aws_availability_zones.available.names, 0, 2)
+  name       = "driftwatch-${var.environment}"
+
+  common_tags = {
+    Project     = "driftwatch"
+    Environment = var.environment
+    ManagedBy   = "terraform"
+  }
+}
+
 
