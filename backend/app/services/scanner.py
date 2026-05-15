@@ -29,6 +29,7 @@ def get_s3() -> dict[str, dict[str, Any]]:
     buckets ={}
     for bucket in s3.list_buckets().get("Buckets", []):
         name = bucket["Name"]
+        versioning = "Disabled"
         try:
             v = s3.get_bucket_versioning(Bucket=name)
             versioning = v.get("Status", "Disabled")
