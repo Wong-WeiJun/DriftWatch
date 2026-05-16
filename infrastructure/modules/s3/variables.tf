@@ -5,6 +5,7 @@ variable "name" {
 
 variable "account_id" {
   description = "AWS account ID used for unique naming"
+  type        = string
 }
 
 variable "tags" {
