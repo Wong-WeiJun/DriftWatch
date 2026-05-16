@@ -27,4 +27,11 @@ locals {
   }
 }
 
+module "s3" {
+  source     = "./modules/s3"
+  name       = local.name
+  account_id = local.account_id
+  tags       = local.common_tags
+}
+
 
