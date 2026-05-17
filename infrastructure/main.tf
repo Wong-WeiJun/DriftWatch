@@ -48,4 +48,30 @@ module "sns" {
   tags        = local.common_tags
 }
 
+resource "aws_ecr_repository" "app" {
+  name                 = "driftwatch-development"
+  image_tag_mutability = "MUTABLE"
 
+  image_scanning_configuration { scan_on_push = true }
+
+  tags = local.common_tags
+}
+
+output "ecr_repo_url" {
+  value = aws_ecr_repository.app.repository_url
+}
+
+# module "ecs" {
+#   source             = "./modules/ecs"
+#   name               = local.name
+#   vpc_id             = module.vpc.vpc_id
+#   private_subnet_ids = module.vpc.private_subnet_ids
+#   public_subnet_ids  = module.vpc.public_subnet_ids
+#   ecr_image_uri      = var.ecr_image_uri
+#   drift_table_name   = "driftwatch-events-${var.environment}"
+#   sns_topic_arn      = module.sns.topic_arn
+#   state_bucket       = module.s3.state_bucket_name
+#   aws_region         = var.aws_region
+#   account_id         = local.account_id
+#   tags               = local.common_tags
+# }
