@@ -8,3 +8,12 @@ variable "alert_email" {
   type        = string
 }
 
+variable "aws_region" {
+  description = "Region used for the environment"
+  type        = string
+}
+
+variable "ecr_image_uri" {
+  description = "Image URI used"
+  type        = string
+}
