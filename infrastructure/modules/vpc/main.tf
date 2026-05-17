@@ -8,7 +8,7 @@ resource "aws_vpc" "main" {
 resource "aws_subnet" "public" {
   count             = length(var.azs)
   vpc_id            = aws_vpc.main.id
-  cidr_block        = "10.0.${count.index + 10}.0/24"
+  cidr_block        = "10.0.${count.index}.0/24"
   availability_zone = var.azs[count.index]
   tags              = merge(var.tags, { Name = "${var.name}-public-${var.azs[count.index]}" })
 }
