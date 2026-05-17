@@ -41,4 +41,11 @@ module "vpc" {
   tags   = local.common_tags
 }
 
+module "sns" {
+  source      = "./modules/sns"
+  name        = local.name
+  alert_email = var.alert_email
+  tags        = local.common_tags
+}
+
 
