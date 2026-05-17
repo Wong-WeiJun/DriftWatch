@@ -5,7 +5,7 @@ variable "name" {
 
 variable "azs" {
   description = "List of AZs available for subnets to deploy into"
-  type        = string
+  type        = list(string)
 }
 
 variable "tags" {
