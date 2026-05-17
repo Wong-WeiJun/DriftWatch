@@ -34,4 +34,11 @@ module "s3" {
   tags       = local.common_tags
 }
 
+module "vpc" {
+  source = "./modules/vpc"
+  name   = local.name
+  azs    = local.azs
+  tags   = local.common_tags
+}
+
 
