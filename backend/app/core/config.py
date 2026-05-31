@@ -1,6 +1,7 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
 
+
 class Settings(BaseSettings):
     APP_NAME: str = "DriftWatch"
     ENV: str = "development"
@@ -12,11 +13,15 @@ class Settings(BaseSettings):
     SNS_TOPIC_ARN: str = ""
 
     API_V1_STR: str = "/api/v1"
-    SCAN_INTERVAL_HOURS: int = 3 
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    SCAN_INTERVAL_HOURS: int = 3
+    model_config = SettingsConfigDict(
+        env_file=".env", extra="ignore", env_ignore_empty=True
+    )
 
-@lru_cache 
+
+@lru_cache
 def get_settings() -> Settings:
     return Settings()
+
 
 settings = get_settings()
