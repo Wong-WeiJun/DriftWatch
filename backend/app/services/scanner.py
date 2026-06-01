@@ -4,6 +4,7 @@ from app.core.config import settings
 
 _session = boto3.Session(region_name=settings.AWS_REGION)
 
+
 def get_ec2() -> dict[str, dict[str, Any]]:
     ec2 = _session.client("ec2")
     instances = {}
@@ -24,9 +25,10 @@ def get_ec2() -> dict[str, dict[str, Any]]:
                 }
     return instances
 
+
 def get_s3() -> dict[str, dict[str, Any]]:
     s3 = _session.client("s3")
-    buckets ={}
+    buckets = {}
     for bucket in s3.list_buckets().get("Buckets", []):
         name = bucket["Name"]
         versioning = "Disabled"
@@ -48,9 +50,10 @@ def get_s3() -> dict[str, dict[str, Any]]:
             "bucket": name,
             "versioning": versioning,
             "block_public_acls": str(public_block.get("BlockPublicAcls", False)),
-            "block_public_policy": str(public_block.get("BlockPublicPolicy", False))
+            "block_public_policy": str(public_block.get("BlockPublicPolicy", False)),
         }
     return buckets
+
 
 def get_security_groups() -> dict[str, dict[str, Any]]:
     ec2 = _session.client("ec2")
@@ -70,6 +73,7 @@ def get_security_groups() -> dict[str, dict[str, Any]]:
             }
     return sgs
 
+
 def get_iam_roles() -> dict[str, dict[str, Any]]:
     iam = _session.client("iam")
     roles = {}
@@ -77,7 +81,7 @@ def get_iam_roles() -> dict[str, dict[str, Any]]:
     for page in paginator.paginate():
         for role in page["Roles"]:
             name = role["RoleName"]
-            roles[name]= {
+            roles[name] = {
                 "_type": "aws_iam_role",
                 "id": name,
                 "name": name,
@@ -86,10 +90,11 @@ def get_iam_roles() -> dict[str, dict[str, Any]]:
             }
     return roles
 
+
 def get_rds() -> dict[str, dict[str, Any]]:
     rds = _session.client("rds")
     instances = {}
-    paginator =rds.get_paginator("describe_db_instances")
+    paginator = rds.get_paginator("describe_db_instances")
     for page in paginator.paginate():
         for db in page["DBInstances"]:
             dbid = db["DBInstanceIdentifier"]
@@ -101,11 +106,6 @@ def get_rds() -> dict[str, dict[str, Any]]:
                 "engine_version": db.get("EngineVersion", ""),
                 "multi_az": str(db.get("MultiAZ", False)),
                 "publicly_accessible": str(db.get("PubliclyAccessible", False)),
-                "deletion_protection": str(db.get("DeletionProtection", False)), 
+                "deletion_protection": str(db.get("DeletionProtection", False)),
             }
     return instances
-
-
-print(get_s3())
-print(get_rds())
-
