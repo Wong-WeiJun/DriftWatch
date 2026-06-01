@@ -1,7 +1,9 @@
 import json
+import boto3
 from pathlib import Path
 from typing import Any
 
+from app.core.config import settings
 
 _TYPE_ALIASES: dict[str, str] = {
     "aws_db_instance": "aws_rds_instance",
@@ -205,14 +207,9 @@ def _extract_by_type(res_type: str, attrs: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def parse_tfstate(
-    file_path: str | Path, *, skip_data: bool = True
+def _parse_state_dict(
+    state: dict[str, Any], *, skip_data: bool = True
 ) -> dict[str, dict[str, Any]]:
-
-    path = Path(file_path)
-    with path.open("r", encoding="utf-8") as f:
-        state = json.load(f)
-
     resources: dict[str, dict[str, Any]] = {}
 
     for res in state.get("resources", []):
@@ -228,14 +225,12 @@ def parse_tfstate(
             attrs = inst.get("attributes", {})
             index_key = inst.get("index_key")
 
-            # Primary identifier
             resource_id = attrs.get("id", "")
             if not resource_id:
                 resource_id = f"{res_type}.{res_name}"
                 if index_key is not None:
                     resource_id = f"{resource_id}[{index_key}]"
 
-            # Build canonical key (handle duplicate IDs with count/for_each)
             key = resource_id
             if index_key is not None:
                 key = f"{resource_id}#{index_key}"
@@ -258,12 +253,23 @@ def parse_tfstate(
     return resources
 
 
+def parse_tfstate(
+    file_path: str | Path, *, skip_data: bool = True
+) -> dict[str, dict[str, Any]]:
+    path = Path(file_path)
+    with path.open("r", encoding="utf-8") as f:
+        state = json.load(f)
+    return _parse_state_dict(state, skip_data=skip_data)
+
+
 def parse_tfstate_raw(file_path: str | Path) -> dict[str, Any]:
+    """Return the raw Terraform state JSON dict without flattening resources."""
     with Path(file_path).open("r", encoding="utf-8") as f:
         return json.load(f)
 
 
 def print_tfstate_summary(file_path: str | Path, *, skip_data: bool = True) -> None:
+    """Print a human-readable summary of a local state file."""
     path = Path(file_path)
     raw = parse_tfstate_raw(path)
     resources = parse_tfstate(path, skip_data=skip_data)
@@ -294,7 +300,6 @@ def print_tfstate_summary(file_path: str | Path, *, skip_data: bool = True) -> N
             label = f"{name}[{idx}]" if idx is not None else name
             print(f"  - {label} (id: {rid})")
 
-            # Extras: key fields inline
             extras_parts = []
             for field_name, display in (
                 ("arn", "arn"),
@@ -327,3 +332,132 @@ def print_tfstate_summary(file_path: str | Path, *, skip_data: bool = True) -> N
         print()
 
     print(f"Total parsed resource instances: {len(resources)}")
+
+
+def _get_s3_client() -> boto3.client:
+    return boto3.client("s3", region_name=settings.AWS_REGION)
+
+
+def fetch_tfstate_from_s3(
+    bucket: str | None = None,
+    key: str = "terraform.tfstate",
+) -> dict[str, Any]:
+
+    bucket = bucket or settings.TF_STATE_BUCKET
+    if not bucket or bucket == "state_bucket":
+        raise ValueError(
+            "No S3 bucket configured. Set TF_STATE_BUCKET in .env or pass 'bucket'."
+        )
+
+    s3 = _get_s3_client()
+    response = s3.get_object(Bucket=bucket, Key=key)
+    body = response["Body"].read().decode("utf-8")
+    return json.loads(body)
+
+
+def list_tfstate_objects(
+    bucket: str | None = None,
+    prefix: str = "",
+) -> list[dict[str, Any]]:
+
+    bucket = bucket or settings.TF_STATE_BUCKET
+    if not bucket or bucket == "state_bucket":
+        raise ValueError(
+            "No S3 bucket configured. Set TF_STATE_BUCKET in .env or pass 'bucket'."
+        )
+
+    s3 = _get_s3_client()
+    paginator = s3.get_paginator("list_objects_v2")
+
+    objects: list[dict[str, Any]] = []
+    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+        for obj in page.get("Contents", []):
+            key = obj["Key"]
+            if key.endswith(".tfstate"):
+                objects.append(
+                    {
+                        "key": key,
+                        "size": obj["Size"],
+                        "last_modified": obj["LastModified"].isoformat(),
+                        "etag": obj["ETag"].strip('"'),
+                    }
+                )
+
+    objects.sort(key=lambda o: o["last_modified"], reverse=True)
+    return objects
+
+
+def find_latest_tfstate_key(
+    bucket: str | None = None,
+    prefix: str = "",
+) -> str | None:
+
+    objs = list_tfstate_objects(bucket=bucket, prefix=prefix)
+    return objs[0]["key"] if objs else None
+
+
+def parse_tfstate_from_s3(
+    bucket: str | None = None,
+    key: str | None = None,
+    *,
+    skip_data: bool = True,
+) -> dict[str, dict[str, Any]]:
+    bucket = bucket or settings.TF_STATE_BUCKET
+    if not key:
+        key = find_latest_tfstate_key(bucket=bucket)
+        if not key:
+            raise FileNotFoundError(f"No .tfstate file found in s3://{bucket}")
+
+    state = fetch_tfstate_from_s3(bucket=bucket, key=key)
+    return _parse_state_dict(state, skip_data=skip_data)
+
+
+def get_state_summary_from_s3(
+    bucket: str | None = None,
+    key: str | None = None,
+    *,
+    skip_data: bool = True,
+) -> dict[str, Any]:
+    """Return high-level metadata about the S3-hosted state file *and* parsed resources.
+
+    This is useful for the drift scanner to quickly compare serial numbers,
+    terraform versions, or resource counts without parsing twice.
+
+    Example return value::
+
+        {
+            "bucket": "driftwatch",
+            "key": "terraform.tfstate",
+            "version": 4,
+            "terraform_version": "1.8.0",
+            "serial": 42,
+            "lineage": "a1b2c3d4-",
+            "resource_count": 17,
+            "resources": { ... flattened resource map ... },
+        }
+    """
+    bucket = bucket or settings.TF_STATE_BUCKET
+    if not key:
+        key = find_latest_tfstate_key(bucket=bucket)
+        if not key:
+            raise FileNotFoundError(f"No .tfstate file found in s3://{bucket}")
+
+    state = fetch_tfstate_from_s3(bucket=bucket, key=key)
+    resources = _parse_state_dict(state, skip_data=skip_data)
+
+    all_raw_resources = state.get("resources", [])
+    data_count = sum(1 for r in all_raw_resources if r.get("mode") == "data")
+
+    return {
+        "bucket": bucket,
+        "key": key,
+        "version": state.get("version"),
+        "terraform_version": state.get("terraform_version"),
+        "serial": state.get("serial"),
+        "lineage": state.get("lineage"),
+        "resource_blocks": len(all_raw_resources),
+        "managed_blocks": len(all_raw_resources) - data_count,
+        "data_blocks": data_count,
+        "resource_count": len(resources),
+        "resources": resources,
+    }
