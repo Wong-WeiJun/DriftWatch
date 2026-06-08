@@ -20,8 +20,13 @@ class DriftEvent(BaseModel):
     region: str = "ap-southeast-2"
 
 
+class ScanTriggerRequest(BaseModel):
+    resource_types: list[str] | None = None  # None = scan all types
+    dry_run: bool = False
+
+
 class ScanResult(BaseModel):
-    scan_id: str = Field(default_factory=lambda: str(uuid.uuid4))
+    scan_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     started_at: datetime | None = Field(
         default_factory=get_datetime_utc,
     )
