@@ -9,6 +9,7 @@ class Settings(BaseSettings):
 
     AWS_REGION: str = "ap-southeast-2"
     DYNAMODB_TABLE_NAME: str = "driftwatch"
+    DYNAMODB_ENDPOINT_URL: str | None = None
     TF_STATE_BUCKET: str = "state_bucket"
     SNS_TOPIC_ARN: str = ""
 
