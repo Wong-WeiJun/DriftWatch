@@ -15,7 +15,7 @@ def get_dynamodb():
         _dynamodb = boto3.resource(
             "dynamodb",
             region_name=settings.AWS_REGION,
-            endpoint_url="http://localhost:8000",
+            endpoint_url=settings.DYNAMODB_ENDPOINT_URL,
         )
     return _dynamodb
 
