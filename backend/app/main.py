@@ -1,7 +1,7 @@
 import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api import health, drift
+from app.api import drift, health, scan
 
 logging.basicConfig(
     level=logging.INFO,
@@ -11,6 +11,7 @@ logging.basicConfig(
 app = FastAPI(title="Driftwatch")
 app.include_router(health.router)
 app.include_router(drift.router)
+app.include_router(scan.router)
 
 
 app.add_middleware(
