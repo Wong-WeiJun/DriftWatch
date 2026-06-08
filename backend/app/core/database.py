@@ -23,6 +23,7 @@ def get_dynamodb():
 def init_db():
     try:
         logger.info(f"Checking if table '{settings.DYNAMODB_TABLE_NAME}' exists")
+        dynamodb = get_dynamodb()
         table = dynamodb.create_table(
             TableName=settings.DYNAMODB_TABLE_NAME,
             KeySchema=[
