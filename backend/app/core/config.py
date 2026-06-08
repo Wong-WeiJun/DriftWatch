@@ -7,8 +7,8 @@ class Settings(BaseSettings):
     ENV: str = "development"
     DEBUG: bool = True
 
-    AWS_REGION: str = "ap-southeast-1"
-    DYNAMODB_TABLE_NAME: str = "driftwatch_events"
+    AWS_REGION: str = "ap-southeast-2"
+    DYNAMODB_TABLE_NAME: str = "driftwatch"
     TF_STATE_BUCKET: str = "state_bucket"
     SNS_TOPIC_ARN: str = ""
 
