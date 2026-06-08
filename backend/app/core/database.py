@@ -6,9 +6,18 @@ from app.core.config import settings
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-dynamodb = boto3.resource(
-    "dynamodb", region_name=settings.AWS_REGION, endpoint_url="http://localhost:8000"
-)
+_dynamodb = None
+
+
+def get_dynamodb():
+    global _dynamodb
+    if _dynamodb is None:
+        _dynamodb = boto3.resource(
+            "dynamodb",
+            region_name=settings.AWS_REGION,
+            endpoint_url="http://localhost:8000",
+        )
+    return _dynamodb
 
 
 def init_db():
