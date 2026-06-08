@@ -17,7 +17,7 @@ class DriftEvent(BaseModel):
     actual: str
     severity: Literal["low", "medium", "high"] = "medium"
     detected_at: datetime = Field(default_factory=get_datetime_utc)
-    region: str = "ap-southeast-1"
+    region: str = "ap-southeast-2"
 
 
 class ScanResult(BaseModel):
