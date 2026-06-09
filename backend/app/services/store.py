@@ -200,13 +200,15 @@ def list_drift_events(
     else:
         # Scan with a filter to skip summary sentinel rows
         resp = table.scan(
-            FilterExpression="attribute_exists(attribute)",
+            FilterExpression="attribute_exists(#attr)",
+            ExpressionAttributeNames={"#attr": "attribute"},
             Limit=limit,
         )
         raw = resp.get("Items", [])
         while resp.get("LastEvaluatedKey") and len(raw) < limit:
             resp = table.scan(
-                FilterExpression="attribute_exists(attribute)",
+                FilterExpression="attribute_exists(#attr)",
+                ExpressionAttributeNames={"#attr": "attribute"},
                 Limit=limit - len(raw),
                 ExclusiveStartKey=resp["LastEvaluatedKey"],
             )
