@@ -1,0 +1,33 @@
+# Git
+.git
+.gitignore
+
+# Terraform / infrastructure
+infrastructure/
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# Python
+terraform.tfstate*
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Local env
+.env
+.env.*
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+
+# Misc
+CLAUDE.md
+*.md
