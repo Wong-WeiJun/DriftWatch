@@ -20,3 +20,8 @@ def get_scan_summary(scan_id: str) -> dict[str, Any]:
     if summary is None:
         raise HTTPException(status_code=404, detail="Scan not found")
     return summary
+
+
+@router.get("/scans")
+def list_scans(limit: int = Query(default=20, le=100)) -> list[dict[str, Any]]:
+    return store.list_scan_summaries(limit=limit)
