@@ -45,13 +45,16 @@ jobs:
           echo "Triggering drift scan at: ${API_URL}/scan/trigger"
           echo "Payload: ${PAYLOAD}"
 
-          RESPONSE=$(curl -sf -X POST \
+          RESPONSE=$(curl -sS -X POST \
             -H "Content-Type: application/json" \
             -d "$PAYLOAD" \
             "${API_URL}/scan/trigger")
 
           echo "Response:"
           echo "$RESPONSE" | jq .
+
+          # Save response for report step
+          echo "$RESPONSE" > /tmp/scan_response.json
 
           # Extract scan_id for follow-up
           SCAN_ID=$(echo "$RESPONSE" | jq -r '.scan_id')
@@ -72,7 +75,7 @@ jobs:
           sleep 30
 
           for i in $(seq 1 10); do
-            RESULT=$(curl -sf "${API_URL}/drifts/scans/${SCAN_ID}")
+            RESULT=$(curl -sS "${API_URL}/drifts/scans/${SCAN_ID}")
             STATUS=$(echo "$RESULT" | jq -r '.status')
             echo "Attempt $i: status = $STATUS"
             if [ "$STATUS" != "queued" ]; then
@@ -84,9 +87,12 @@ jobs:
           done
 
           # Fetch drift events for this scan
-          EVENTS=$(curl -sf "${API_URL}/drifts/events?scan_id=${SCAN_ID}&limit=100")
+          EVENTS=$(curl -sS "${API_URL}/drifts/events?scan_id=${SCAN_ID}&limit=100")
           echo "Drift events for scan ${SCAN_ID}:"
           echo "$EVENTS" | jq .
+
+          # Save background result for report step
+          echo "$RESULT" > /tmp/scan_result.json
 
       - name: Report results
         if: always()
@@ -98,10 +104,14 @@ jobs:
           echo "Dry run:   ${{ env.is_dry_run }}"
           echo "Scan ID:   ${SCAN_ID}"
 
-          if [ -n "$SCAN_ID" ] && [ "$SCAN_ID" != "null" ]; then
-            SUMMARY=$(curl -sf "${API_URL}/drifts/scans/${SCAN_ID}")
-            echo "Summary:"
-            echo "$SUMMARY" | jq .
+          if [ "${{ env.is_dry_run }}" = "true" ] && [ -f /tmp/scan_response.json ]; then
+            echo "Dry-run results (response from trigger):"
+            jq -r '.drift_events[]? | "  - \(.resource_type)/\(.resource_id): \(.attribute) (\(.severity))"' /tmp/scan_response.json || true
+            echo ""
+            jq '. | {scan_id, status, resource_scanned, drifts_found, dry_run}' /tmp/scan_response.json || true
+          elif [ -f /tmp/scan_result.json ]; then
+            echo "Background scan results:"
+            jq '. | {scan_id, status, resource_scanned, drifts_found}' /tmp/scan_result.json || true
           else
-            echo "No scan_id available"
+            echo "No results available"
           fi
