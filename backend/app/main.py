@@ -40,4 +40,10 @@ if os.path.exists("/app/frontend"):
 
 @app.get("/")
 def serve_dashboard():
-    return FileResponse("/app/frontend/index.html")
+    index = "/app/frontend/index.html"
+    if not os.path.exists(index):
+        return {
+            "error": "Dashboard not found",
+            "hint": "frontend/index.html missing from image",
+        }
+    return FileResponse(index)
