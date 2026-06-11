@@ -335,7 +335,11 @@ def print_tfstate_summary(file_path: str | Path, *, skip_data: bool = True) -> N
 
 
 def _get_s3_client() -> boto3.client:
-    return boto3.client("s3", region_name=settings.AWS_REGION)
+    kwargs: dict[str, Any] = {"region_name": settings.AWS_REGION}
+    endpoint = settings.AWS_ENDPOINT_URL
+    if endpoint:
+        kwargs["endpoint_url"] = endpoint
+    return boto3.client("s3", **kwargs)
 
 
 def fetch_tfstate_from_s3(
