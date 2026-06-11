@@ -17,3 +17,7 @@ output "api_url" {
 output "alb_dns_name" {
   value = module.ecs.alb_dns_name
 }
+
+output "github_actions_role_arn" {
+  value = aws_iam_role.github_actions.arn
+}
