@@ -17,3 +17,9 @@ variable "ecr_image_uri" {
   description = "Image URI used"
   type        = string
 }
+
+variable "github_repo" {
+  description = "GitHub repository in owner/repo format for OIDC trust"
+  type        = string
+  default     = "Wong-WeiJun/DriftWatch"
+}
