@@ -139,9 +139,13 @@ resource "aws_ecs_task_definition" "app" {
 
       environment = [
         { name = "AWS_REGION", value = var.aws_region },
-        { name = "STATE_BUCKET", value = var.state_bucket },
+        { name = "TF_STATE_BUCKET", value = var.state_bucket },
+        { name = "TF_STATE_KEY", value = "terraform.tfstate" },
         { name = "SNS_TOPIC_ARN", value = var.sns_topic_arn },
-        { name = "DRIFT_TABLE", value = var.drift_table_name }
+        { name = "DYNAMODB_TABLE_NAME", value = var.drift_table_name },
+        { name = "APP_NAME", value = "DriftWatch" },
+        { name = "ENV", value = "production" },
+        { name = "DEBUG", value = "false" }
       ]
 
       logConfiguration = {

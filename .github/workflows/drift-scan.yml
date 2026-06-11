@@ -17,6 +17,10 @@ on:
         default: ''
         type: string
 
+env:
+  # Schedule always runs non-dry-run (real scan). Manual triggers default to dry-run.
+  IS_DRY_RUN: ${{ github.event_name == 'schedule' && 'false' || (inputs.dry_run == false && 'false' || 'true') }}
+
 jobs:
   scan:
     name: Trigger Drift Scan
@@ -25,25 +29,26 @@ jobs:
       - name: Trigger drift scan via API
         env:
           API_URL: ${{ vars.API_URL }}
-          DRY_RUN: ${{ inputs.dry_run }}
+          DRY_RUN: ${{ env.IS_DRY_RUN }}
           RESOURCE_TYPES: ${{ inputs.resource_types }}
         run: |
+          echo "is_dry_run=${DRY_RUN}" >> $GITHUB_ENV
+
           # Build resource_types list for JSON
           if [ -n "$RESOURCE_TYPES" ]; then
-            # Convert comma-separated to JSON array
             TYPES_JSON=$(echo "$RESOURCE_TYPES" | tr ',' '\n' | jq -R . | jq -s .)
             PAYLOAD=$(printf '{"dry_run":%s,"resource_types":%s}' "$DRY_RUN" "$TYPES_JSON")
           else
             PAYLOAD=$(printf '{"dry_run":%s}' "$DRY_RUN")
           fi
 
-          echo "Triggering drift scan at: ${API_URL}/api/v1/scan/trigger"
+          echo "Triggering drift scan at: ${API_URL}/scan/trigger"
           echo "Payload: ${PAYLOAD}"
 
           RESPONSE=$(curl -sf -X POST \
             -H "Content-Type: application/json" \
             -d "$PAYLOAD" \
-            "${API_URL}/api/v1/scan/trigger")
+            "${API_URL}/scan/trigger")
 
           echo "Response:"
           echo "$RESPONSE" | jq .
@@ -58,16 +63,16 @@ jobs:
             exit 1
           fi
 
-      - name: Wait for background scan (non-dry-run)
-        if: ${{ inputs.dry_run == false || github.event_name == 'schedule' }}
+      - name: Wait for background scan to complete
+        if: env.is_dry_run == 'false'
         env:
           API_URL: ${{ vars.API_URL }}
         run: |
-          echo "Waiting for scan to complete..."
+          echo "Waiting for background scan to complete..."
           sleep 30
 
           for i in $(seq 1 10); do
-            RESULT=$(curl -sf "${API_URL}/api/v1/drifts/scans/${SCAN_ID}")
+            RESULT=$(curl -sf "${API_URL}/drifts/scans/${SCAN_ID}")
             STATUS=$(echo "$RESULT" | jq -r '.status')
             echo "Attempt $i: status = $STATUS"
             if [ "$STATUS" != "queued" ]; then
@@ -79,7 +84,7 @@ jobs:
           done
 
           # Fetch drift events for this scan
-          EVENTS=$(curl -sf "${API_URL}/api/v1/drifts/events?scan_id=${SCAN_ID}&limit=100")
+          EVENTS=$(curl -sf "${API_URL}/drifts/events?scan_id=${SCAN_ID}&limit=100")
           echo "Drift events for scan ${SCAN_ID}:"
           echo "$EVENTS" | jq .
 
@@ -89,8 +94,10 @@ jobs:
         run: |
           echo "=== Drift Scan Complete ==="
           echo "API URL: ${API_URL}"
-          echo "Scan ID: ${SCAN_ID}"
+          echo "Dry run:   ${{ env.is_dry_run }}"
+          echo "Scan ID:   ${SCAN_ID}"
 
-          # Get summary
-          SUMMARY=$(curl -sf "${API_URL}/api/v1/drifts/scans/${SCAN_ID}")
+          # Get summary (works for both dry-run and background scan)
+          SUMMARY=$(curl -sf "${API_URL}/drifts/scans/${SCAN_ID}")
+          echo "Summary:"
           echo "$SUMMARY" | jq .
