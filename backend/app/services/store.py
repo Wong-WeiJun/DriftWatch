@@ -189,3 +189,16 @@ def get_scan_summary(scan_id: str) -> dict[str, Any] | None:
         "detected_at": item.get("detected_at", ""),
         "region": item.get("region", settings.AWS_REGION),
     }
+
+
+def list_scan_summaries(*, limit: int = 20) -> list[dict[str, Any]]:
+    ddb = get_dynamodb()
+    table = ddb.Table(settings.DYNAMODB_TABLE_NAME)
+    resp = table.scan(
+        FilterExpression="resource_id = :s",
+        ExpressionAttributeValues={":s": "#SUMMARY"},
+        Limit=limit,
+    )
+    items = resp.get("Items", [])
+    items.sort(key=lambda x: x.get("detected_at", ""), reverse=True)
+    return items[:limit]
