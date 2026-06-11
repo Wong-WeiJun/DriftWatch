@@ -3,8 +3,6 @@
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from app.services.store import (
     _build_sk,
     _parse_sk,
@@ -86,9 +84,7 @@ class TestSaveScanResult:
         assert mock_table.batch_writer.called
 
         # Collect every Item put through the batch writer
-        call_args_list = (
-            mock_table.batch_writer.return_value.__enter__.return_value.put_item.call_args_list
-        )
+        call_args_list = mock_table.batch_writer.return_value.__enter__.return_value.put_item.call_args_list
         items = [c.kwargs["Item"] for c in call_args_list]
 
         # Should have 3 items: 2 drift events + 1 summary
@@ -123,9 +119,7 @@ class TestSaveScanResult:
 
         save_scan_result(result)
 
-        call_args_list = (
-            mock_table.batch_writer.return_value.__enter__.return_value.put_item.call_args_list
-        )
+        call_args_list = mock_table.batch_writer.return_value.__enter__.return_value.put_item.call_args_list
         items = [c.kwargs["Item"] for c in call_args_list]
         assert len(items) == 1
         assert items[0]["resource_id"] == "#SUMMARY"
@@ -157,9 +151,7 @@ class TestSaveScanResult:
 
         save_scan_result(result)
 
-        call_args_list = (
-            mock_table.batch_writer.return_value.__enter__.return_value.put_item.call_args_list
-        )
+        call_args_list = mock_table.batch_writer.return_value.__enter__.return_value.put_item.call_args_list
         drift_items = [
             c.kwargs["Item"]
             for c in call_args_list

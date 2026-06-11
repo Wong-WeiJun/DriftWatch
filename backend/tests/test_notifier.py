@@ -3,7 +3,6 @@
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
-import pytest
 from botocore.exceptions import ClientError
 
 from app.services.notifier import get_sns, publish_drift_alert

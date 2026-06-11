@@ -15,6 +15,7 @@ env:
   ECR_REPOSITORY: driftwatch-development
   ECS_CLUSTER: driftwatch-development-cluster
   ECS_SERVICE: driftwatch-development-service
+  ECS_TASK_FAMILY: driftwatch-development
 
 jobs:
   build-and-push:
@@ -83,7 +84,7 @@ jobs:
         run: |
           # Get current task definition
           aws ecs describe-task-definition \
-            --task-definition "${{ env.ECS_CLUSTER }}" \
+            --task-definition "${{ env.ECS_TASK_FAMILY }}" \
             --query 'taskDefinition' > task-def.json
 
           # Remove fields that can't be used in register-task-definition
@@ -94,10 +95,7 @@ jobs:
             .requiresAttributes,
             .compatibilities,
             .registeredAt,
-            .registeredBy,
-            .cpu,
-            .memory,
-            .networkMode
+            .registeredBy
           )' > cleaned-task-def.json
 
           # Update image

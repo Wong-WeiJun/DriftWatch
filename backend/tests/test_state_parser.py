@@ -118,9 +118,7 @@ class TestFetchTfstateFromS3:
         mock_s3.get_object.return_value = {"Body": body}
         mock_boto_client.return_value = mock_s3
 
-        result = fetch_tfstate_from_s3(
-            bucket="override-bucket", key="dev/state.tfstate"
-        )
+        fetch_tfstate_from_s3(bucket="override-bucket", key="dev/state.tfstate")
 
         mock_s3.get_object.assert_called_once_with(
             Bucket="override-bucket", Key="dev/state.tfstate"
@@ -281,7 +279,7 @@ class TestParseTfstateFromS3:
         mock_find.return_value = "latest.tfstate"
         mock_fetch.return_value = sample_raw_state
 
-        resources = parse_tfstate_from_s3(bucket="b")
+        parse_tfstate_from_s3(bucket="b")
 
         mock_find.assert_called_once_with(bucket="b")
         mock_fetch.assert_called_once_with(bucket="b", key="latest.tfstate")

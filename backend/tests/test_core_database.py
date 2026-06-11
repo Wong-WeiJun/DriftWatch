@@ -35,7 +35,7 @@ class TestGetDynamodb:
             mock_settings.AWS_REGION = "us-east-1"
             mock_settings.AWS_ENDPOINT_URL = "http://localhost:4566"
 
-            ddb = get_dynamodb()
+            get_dynamodb()
             mock_boto_resource.assert_called_once_with(
                 "dynamodb",
                 region_name="us-east-1",

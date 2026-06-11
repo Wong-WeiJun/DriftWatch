@@ -35,12 +35,12 @@ def publish_drift_alert(result: ScanResult) -> None:
 
     lines = [
         f"Driftwatch detected {result.drifts_found} drift(s) in scan {result.scan_id[:8]}",
-        f"",
+        "",
         f"Resources scanned: {result.resource_scanned}",
         f"High severity:     {len(high)}",
         f"Medium severity:   {len(medium)}",
         f"Low severity:      {len(low)}",
-        f"",
+        "",
     ]
 
     shown = result.drift_events[:10]

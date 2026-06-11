@@ -268,8 +268,6 @@ def publish_alert(report: dict[str, Any]) -> None:
 
 
 if __name__ == "__main__":
-    import sys
-
     logging.basicConfig(
         level=logging.INFO,
         format="[%(levelname)1.1s %(asctime)s %(name)s:%(lineno)d] %(message)s",

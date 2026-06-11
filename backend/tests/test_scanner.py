@@ -270,7 +270,12 @@ class TestGetS3:
         mock_s3.list_buckets.return_value = {"Buckets": [{"Name": "my-bucket"}]}
         mock_s3.get_bucket_versioning.return_value = {}
         mock_s3.get_public_access_block.side_effect = ClientError(
-            {"Error": {"Code": "NoSuchPublicAccessBlockConfiguration", "Message": "None"}},
+            {
+                "Error": {
+                    "Code": "NoSuchPublicAccessBlockConfiguration",
+                    "Message": "None",
+                }
+            },
             "GetPublicAccessBlock",
         )
         mock_client.return_value = mock_s3
@@ -301,9 +306,7 @@ class TestGetSecurityGroups:
                         "IpPermissions": [
                             {"IpProtocol": "tcp", "FromPort": 80, "ToPort": 80}
                         ],
-                        "IpPermissionsEgress": [
-                            {"IpProtocol": "-1"}
-                        ],
+                        "IpPermissionsEgress": [{"IpProtocol": "-1"}],
                     }
                 ]
             }

@@ -20,13 +20,12 @@ resource can have multiple drift rows without collision.
 from __future__ import annotations
 
 import logging
-import uuid
 from datetime import datetime, timezone
 from typing import Any
 
 from app.core.config import settings
 from app.core.database import get_dynamodb
-from models.drift import DriftEvent, ScanResult
+from models.drift import ScanResult
 
 logger = logging.getLogger(__name__)
 
