@@ -43,9 +43,7 @@ services:
   dynamodb-init:
     build: .
     command: >-
-      python -c
-      "import time; time.sleep(2);
-      exec(open('/dev/stdin').read())"
+      python -c "from app.core.database import init_db; init_db()"
     environment:
       PYTHONPATH: /app
       AWS_REGION: ap-southeast-2
