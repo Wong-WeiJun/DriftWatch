@@ -23,6 +23,7 @@ WORKDIR /app
 COPY backend/app ./app
 COPY backend/models ./models
 COPY backend/scripts ./scripts
+COPY frontend ./frontend
 
 EXPOSE 8000
 
