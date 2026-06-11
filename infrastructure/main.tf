@@ -1,15 +1,18 @@
 terraform {
+  required_version = ">= 1.6"
+
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 6.0"
+      version = "~> 5.0"
     }
   }
-}
 
-provider "aws" {
-  region  = "ap-southeast-1"
-  profile = "default"
+  backend "s3" {
+    bucket = "driftwatch-development-703477452145"
+    key    = "terraform.tfstate"
+    region = "ap-southeast-2"
+  }
 }
 
 data "aws_caller_identity" "acc" {}                               #get user id
