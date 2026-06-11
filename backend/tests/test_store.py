@@ -1,36 +1,23 @@
 """Tests for app.services.store."""
 
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from app.services.store import (
     _build_sk,
-    _event_items_from_report,
     _parse_sk,
-    _severity_for,
     get_scan_summary,
     list_drift_events,
     save_scan_result,
 )
+from models.drift import DriftEvent, ScanResult
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-class TestSeverityFor:
-    def test_high_severity_attributes(self):
-        assert _severity_for("instance_type") == "high"
-        assert _severity_for("instance_class") == "high"
-        assert _severity_for("publicly_accessible") == "high"
-        assert _severity_for("ami") == "high"
-
-    def test_medium_severity_by_default(self):
-        assert _severity_for("tags") == "medium"
-        assert _severity_for("ingress_rule_count") == "medium"
-        assert _severity_for("vpc_id") == "medium"
 
 
 class TestBuildSK:
@@ -50,86 +37,6 @@ class TestParseSK:
 
 
 # ---------------------------------------------------------------------------
-# report -> item conversion
-# ---------------------------------------------------------------------------
-
-
-class TestEventItemsFromReport:
-    def test_empty_drifted(self):
-        items = _event_items_from_report(
-            {"drifted": {}, "summary": {}},
-            scan_id="scan-1",
-            region="ap-southeast-1",
-        )
-        assert items == []
-
-    def test_single_drift(self):
-        report = {
-            "drifted": {
-                "i-1": {
-                    "resource_type": "aws_instance",
-                    "resource_id": "i-1",
-                    "differences": {
-                        "instance_type": {
-                            "tf_value": "t3.micro",
-                            "live_value": "t3.large",
-                        }
-                    },
-                }
-            },
-            "summary": {"drifted": 1},
-        }
-        items = _event_items_from_report(
-            report, scan_id="scan-1", region="ap-southeast-1"
-        )
-        assert len(items) == 1
-        item = items[0]
-        assert item["scan_id"] == "scan-1"
-        assert item["resource_id"] == "i-1#instance_type"
-        assert item["_resource_id"] == "i-1"
-        assert item["resource_type"] == "ec2"
-        assert item["attribute"] == "instance_type"
-        assert item["expected"] == "t3.micro"
-        assert item["actual"] == "t3.large"
-        assert item["severity"] == "high"
-        assert item["region"] == "ap-southeast-1"
-        assert "detected_at" in item
-
-    def test_none_live_value(self):
-        """Missing live values should be stored as empty string."""
-        report = {
-            "drifted": {
-                "i-1": {
-                    "resource_type": "aws_instance",
-                    "differences": {
-                        "key_name": {
-                            "tf_value": "my-key",
-                            "live_value": None,
-                        }
-                    },
-                }
-            },
-            "summary": {},
-        }
-        items = _event_items_from_report(report, scan_id="s", region="r")
-        assert items[0]["expected"] == "my-key"
-        assert items[0]["actual"] == ""
-
-    def test_unknown_resource_type_fallback(self):
-        report = {
-            "drifted": {
-                "x": {
-                    "resource_type": "aws_unknown",
-                    "differences": {"foo": {"tf_value": "a", "live_value": "b"}},
-                }
-            },
-            "summary": {},
-        }
-        items = _event_items_from_report(report, scan_id="s", region="r")
-        assert items[0]["resource_type"] == "aws_unknown"  # falls through _TYPE_MAP
-
-
-# ---------------------------------------------------------------------------
 # save_scan_result
 # ---------------------------------------------------------------------------
 
@@ -142,39 +49,38 @@ class TestSaveScanResult:
         mock_ddb.Table.return_value = mock_table
         mock_get_dynamodb.return_value = mock_ddb
 
-        report = {
-            "summary": {
-                "tf_resources": 5,
-                "live_resources": 4,
-                "drifted": 2,
-                "missing_in_live": 1,
-                "missing_in_tf": 1,
-            },
-            "drifted": {
-                "i-1": {
-                    "resource_type": "aws_instance",
-                    "differences": {
-                        "instance_type": {
-                            "tf_value": "t3.micro",
-                            "live_value": "t3.large",
-                        }
-                    },
-                },
-                "i-2": {
-                    "resource_type": "aws_instance",
-                    "differences": {
-                        "ami": {
-                            "tf_value": "ami-123",
-                            "live_value": "ami-999",
-                        }
-                    },
-                },
-            },
-            "missing_in_live": [],
-            "missing_in_tf": [],
-        }
+        scan_id = "scan-1"
+        event1 = DriftEvent(
+            scan_id=scan_id,
+            resource_id="i-1",
+            resource_type="ec2",
+            attribute="instance_type",
+            expected="t3.micro",
+            actual="t3.large",
+            severity="high",
+            detected_at=datetime(2026, 6, 8, 10, 0, 0, tzinfo=timezone.utc),
+            region="ap-southeast-1",
+        )
+        event2 = DriftEvent(
+            scan_id=scan_id,
+            resource_id="i-2",
+            resource_type="ec2",
+            attribute="ami",
+            expected="ami-123",
+            actual="ami-999",
+            severity="high",
+            detected_at=datetime(2026, 6, 8, 10, 0, 0, tzinfo=timezone.utc),
+            region="ap-southeast-1",
+        )
+        result = ScanResult(
+            scan_id=scan_id,
+            resource_scanned=5,
+            drifts_found=2,
+            status="completed",
+            drift_events=[event1, event2],
+        )
 
-        scan_id = save_scan_result(report)
+        save_scan_result(result)
 
         # batch_writer should be used
         assert mock_table.batch_writer.called
@@ -190,15 +96,15 @@ class TestSaveScanResult:
 
         summary_items = [i for i in items if i.get("resource_id") == "#SUMMARY"]
         assert len(summary_items) == 1
-        assert summary_items[0]["drifted_count"] == 2
+        assert summary_items[0]["drifts_found"] == 2
 
         drift_items = [i for i in items if i.get("resource_id") != "#SUMMARY"]
         assert len(drift_items) == 2
         attrs = {i["attribute"] for i in drift_items}
         assert attrs == {"instance_type", "ami"}
 
-        # scan_id should be a UUID
-        assert all(i["scan_id"] == scan_id for i in items)
+        # Each drift item should reference the scan_id
+        assert all(i["scan_id"] == scan_id for i in drift_items)
 
     @patch("app.services.store.get_dynamodb")
     def test_no_drift_saves_summary_only(self, mock_get_dynamodb):
@@ -207,14 +113,15 @@ class TestSaveScanResult:
         mock_ddb.Table.return_value = mock_table
         mock_get_dynamodb.return_value = mock_ddb
 
-        report = {
-            "summary": {"drifted": 0, "missing_in_live": 0, "missing_in_tf": 0},
-            "drifted": {},
-            "missing_in_live": [],
-            "missing_in_tf": [],
-        }
+        result = ScanResult(
+            scan_id="scan-1",
+            resource_scanned=0,
+            drifts_found=0,
+            status="completed",
+            drift_events=[],
+        )
 
-        save_scan_result(report)
+        save_scan_result(result)
 
         call_args_list = (
             mock_table.batch_writer.return_value.__enter__.return_value.put_item.call_args_list
@@ -222,6 +129,45 @@ class TestSaveScanResult:
         items = [c.kwargs["Item"] for c in call_args_list]
         assert len(items) == 1
         assert items[0]["resource_id"] == "#SUMMARY"
+
+    @patch("app.services.store.get_dynamodb")
+    def test_resource_id_in_drift_items(self, mock_get_dynamodb):
+        """Each drift item should have both resource_id (SK) and _resource_id (clean)."""
+        mock_table = MagicMock()
+        mock_ddb = MagicMock()
+        mock_ddb.Table.return_value = mock_table
+        mock_get_dynamodb.return_value = mock_ddb
+
+        event = DriftEvent(
+            scan_id="scan-1",
+            resource_id="i-1",
+            resource_type="ec2",
+            attribute="ami",
+            expected="ami-100",
+            actual="ami-200",
+            severity="high",
+        )
+        result = ScanResult(
+            scan_id="scan-1",
+            resource_scanned=1,
+            drifts_found=1,
+            status="completed",
+            drift_events=[event],
+        )
+
+        save_scan_result(result)
+
+        call_args_list = (
+            mock_table.batch_writer.return_value.__enter__.return_value.put_item.call_args_list
+        )
+        drift_items = [
+            c.kwargs["Item"]
+            for c in call_args_list
+            if c.kwargs["Item"].get("resource_id") != "#SUMMARY"
+        ]
+        assert len(drift_items) == 1
+        assert drift_items[0]["resource_id"] == "i-1#ami"
+        assert drift_items[0]["_resource_id"] == "i-1"
 
 
 # ---------------------------------------------------------------------------
@@ -374,7 +320,9 @@ class TestGetScanSummary:
             "Item": {
                 "scan_id": "scan-1",
                 "resource_id": "#SUMMARY",
-                "summary": {"drifted": 3},
+                "resource_scanned": 5,
+                "drifts_found": 3,
+                "status": "completed",
                 "region": "ap-southeast-1",
                 "detected_at": "2026-06-08T10:00:00+00:00",
             }
@@ -383,7 +331,7 @@ class TestGetScanSummary:
         result = get_scan_summary("scan-1")
         assert result is not None
         assert result["scan_id"] == "scan-1"
-        assert result["summary"]["drifted"] == 3
+        assert result["drifts_found"] == 3
 
     @patch("app.services.store.get_dynamodb")
     def test_not_found(self, mock_get_dynamodb):
