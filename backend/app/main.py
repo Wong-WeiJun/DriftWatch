@@ -1,5 +1,5 @@
 import logging
-from fastapi import FastAPI
+from fastapi import FastAPI, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -7,15 +7,23 @@ import os
 from app.api import drift, health, scan
 
 
+from app.core.config import settings
+
 logging.basicConfig(
     level=logging.INFO,
     format="[%(levelname)1.1s %(asctime)s %(pathname)s:%(lineno)d] %(message)s",
     datefmt="%y%m%d %H:%M:%S",
 )
 app = FastAPI(title="Driftwatch")
+
+# API v1 routes under /api/v1 prefix
+api_router = APIRouter(prefix=settings.API_V1_STR)
+api_router.include_router(drift.router)
+api_router.include_router(scan.router)
+app.include_router(api_router)
+
+# Health check at /health (no prefix)
 app.include_router(health.router)
-app.include_router(drift.router)
-app.include_router(scan.router)
 
 
 app.add_middleware(
