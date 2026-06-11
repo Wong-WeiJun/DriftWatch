@@ -5,3 +5,4 @@ __pycache__/
 *.tfstate.*
 .terraform.lock.hcl
 .env
+config.js
