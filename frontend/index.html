@@ -233,8 +233,8 @@
     setStatus('Fetching drift events...');
     try {
       const [driftsRes, scansRes] = await Promise.all([
-        fetch(`${API_BASE}/drifts/?limit=200`),
-        fetch(`${API_BASE}/drifts/scans?limit=1`),
+        fetch(`${API_BASE}/api/v1/drifts/events?limit=200`),
+        fetch(`${API_BASE}/api/v1/drifts/scans?limit=1`),
       ]);
 
       allDrifts = await driftsRes.json();
@@ -253,9 +253,9 @@
     document.getElementById('stat-total').textContent  = drifts.length;
     document.getElementById('stat-high').textContent   = drifts.filter(d => d.severity === 'high').length;
     document.getElementById('stat-medium').textContent = drifts.filter(d => d.severity === 'medium').length;
-    document.getElementById('stat-resources').textContent = lastScan?.resources_scanned ?? '—';
+    document.getElementById('stat-resources').textContent = lastScan?.resource_scanned ?? '—';
     document.getElementById('stat-last-scan').textContent = lastScan
-      ? new Date(lastScan.started_at).toLocaleString()
+      ? new Date(lastScan.detected_at).toLocaleString()
       : '—';
   }
 
@@ -323,7 +323,7 @@
     setStatus('Triggering scan...');
 
     try {
-      const res = await fetch(`${API_BASE}/scan/trigger`, {
+      const res = await fetch(`${API_BASE}/api/v1/scan/trigger`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ dry_run: false }),
