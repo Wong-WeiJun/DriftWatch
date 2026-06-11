@@ -120,3 +120,57 @@ resource "aws_iam_role_policy" "github_actions_deploy" {
   role   = aws_iam_role.github_actions.id
   policy = data.aws_iam_policy_document.github_actions_deploy.json
 }
+
+# ---------------------------------------------------------------------------
+# DynamoDB table for storing drift scan results
+# ---------------------------------------------------------------------------
+
+resource "aws_dynamodb_table" "driftwatch" {
+  name         = "driftwatch-events-${var.environment}"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "scan_id"
+  range_key    = "resource_id"
+
+  attribute {
+    name = "scan_id"
+    type = "S"
+  }
+
+  attribute {
+    name = "resource_id"
+    type = "S"
+  }
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name}-events"
+  })
+}
+
+# ---------------------------------------------------------------------------
+# ECS task role — DynamoDB write policy for drift table
+# ---------------------------------------------------------------------------
+
+data "aws_iam_policy_document" "ecs_task_dynamodb" {
+  statement {
+    sid    = "DriftTableAccess"
+    effect = "Allow"
+    actions = [
+      "dynamodb:PutItem",
+      "dynamodb:GetItem",
+      "dynamodb:Query",
+      "dynamodb:Scan",
+      "dynamodb:BatchWriteItem",
+    ]
+    resources = [aws_dynamodb_table.driftwatch.arn]
+  }
+}
+
+resource "aws_iam_policy" "ecs_task_dynamodb" {
+  name   = "${local.name}-ecs-task-dynamodb"
+  policy = data.aws_iam_policy_document.ecs_task_dynamodb.json
+}
+
+resource "aws_iam_role_policy_attachment" "ecs_task_dynamodb" {
+  role       = module.ecs.task_role_name
+  policy_arn = aws_iam_policy.ecs_task_dynamodb.arn
+}
