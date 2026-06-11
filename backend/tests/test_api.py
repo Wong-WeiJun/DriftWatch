@@ -8,6 +8,8 @@ from app.main import app
 
 client = TestClient(app)
 
+API_PREFIX = "/api/v1"
+
 
 # ---------------------------------------------------------------------------
 # /health
@@ -42,7 +44,7 @@ class TestDriftEndpoints:
                 "region": "ap-southeast-1",
             }
         ]
-        response = client.get("/drifts/events")
+        response = client.get(f"{API_PREFIX}/drifts/events")
         assert response.status_code == 200
         data = response.json()
         assert len(data) == 1
@@ -52,21 +54,21 @@ class TestDriftEndpoints:
     @patch("app.api.drift.store.list_drift_events")
     def test_list_events_with_scan_id(self, mock_list):
         mock_list.return_value = []
-        response = client.get("/drifts/events?scan_id=scan-abc")
+        response = client.get(f"{API_PREFIX}/drifts/events?scan_id=scan-abc")
         assert response.status_code == 200
         mock_list.assert_called_once_with(scan_id="scan-abc", limit=100)
 
     @patch("app.api.drift.store.list_drift_events")
     def test_list_events_with_limit(self, mock_list):
         mock_list.return_value = []
-        response = client.get("/drifts/events?limit=50")
+        response = client.get(f"{API_PREFIX}/drifts/events?limit=50")
         assert response.status_code == 200
         mock_list.assert_called_once_with(scan_id=None, limit=50)
 
     @patch("app.api.drift.store.list_drift_events")
     def test_list_events_limit_too_high(self, mock_list):
         """Limit > 1000 should fail validation."""
-        response = client.get("/drifts/events?limit=5000")
+        response = client.get(f"{API_PREFIX}/drifts/events?limit=5000")
         assert response.status_code == 422
 
     @patch("app.api.drift.store.get_scan_summary")
@@ -79,7 +81,7 @@ class TestDriftEndpoints:
             "detected_at": "2026-06-08T10:00:00+00:00",
             "region": "ap-southeast-1",
         }
-        response = client.get("/drifts/scans/scan-1")
+        response = client.get(f"{API_PREFIX}/drifts/scans/scan-1")
         assert response.status_code == 200
         data = response.json()
         assert data["scan_id"] == "scan-1"
@@ -88,7 +90,7 @@ class TestDriftEndpoints:
     @patch("app.api.drift.store.get_scan_summary")
     def test_get_scan_summary_not_found(self, mock_get):
         mock_get.return_value = None
-        response = client.get("/drifts/scans/missing-scan")
+        response = client.get(f"{API_PREFIX}/drifts/scans/missing-scan")
         assert response.status_code == 404
         assert "not found" in response.json()["detail"].lower()
 
@@ -127,7 +129,7 @@ class TestScanEndpoints:
             "missing_in_tf": [],
         }
 
-        response = client.post("/scan/trigger", json={"dry_run": True})
+        response = client.post(f"{API_PREFIX}/scan/trigger", json={"dry_run": True})
         assert response.status_code == 200
         data = response.json()
         assert data["dry_run"] is True
@@ -155,7 +157,7 @@ class TestScanEndpoints:
         }
 
         response = client.post(
-            "/scan/trigger",
+            f"{API_PREFIX}/scan/trigger",
             json={"dry_run": True, "resource_types": ["ec2", "s3"]},
         )
         assert response.status_code == 200
@@ -180,7 +182,7 @@ class TestScanEndpoints:
             "missing_in_tf": [],
         }
 
-        response = client.post("/scan/trigger", json={"dry_run": True})
+        response = client.post(f"{API_PREFIX}/scan/trigger", json={"dry_run": True})
         assert response.status_code == 200
         data = response.json()
         assert data["drifts_found"] == 0
@@ -188,7 +190,7 @@ class TestScanEndpoints:
 
     def test_trigger_background_queue(self):
         """Non-dry run should queue a background task and return scan_id."""
-        response = client.post("/scan/trigger", json={"dry_run": False})
+        response = client.post(f"{API_PREFIX}/scan/trigger", json={"dry_run": False})
         assert response.status_code == 200
         data = response.json()
         assert data["dry_run"] is False
@@ -198,7 +200,7 @@ class TestScanEndpoints:
 
     def test_trigger_default_not_dry_run(self):
         """Default dry_run should be False (background task)."""
-        response = client.post("/scan/trigger", json={})
+        response = client.post(f"{API_PREFIX}/scan/trigger", json={})
         assert response.status_code == 200
         data = response.json()
         assert data["dry_run"] is False
@@ -237,6 +239,6 @@ class TestAppStructure:
         assert schema["info"]["title"] == "Driftwatch"
         paths = schema["paths"]
         assert "/health" in paths
-        assert "/drifts/events" in paths
-        assert "/drifts/scans/{scan_id}" in paths
-        assert "/scan/trigger" in paths
+        assert f"{API_PREFIX}/drifts/events" in paths
+        assert f"{API_PREFIX}/drifts/scans/{{scan_id}}" in paths
+        assert f"{API_PREFIX}/scan/trigger" in paths
