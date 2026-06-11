@@ -12,7 +12,11 @@ _sns = None
 def get_sns():
     global _sns
     if _sns is None:
-        _sns = boto3.client("sns", region_name=settings.AWS_REGION)
+        kwargs = {"region_name": settings.AWS_REGION}
+        endpoint = settings.AWS_ENDPOINT_URL
+        if endpoint:
+            kwargs["endpoint_url"] = endpoint
+        _sns = boto3.client("sns", **kwargs)
     return _sns
 
 
