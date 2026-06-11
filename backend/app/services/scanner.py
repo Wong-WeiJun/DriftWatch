@@ -1,12 +1,26 @@
-import boto3
+from __future__ import annotations
+
+import logging
 from typing import Any
+
+import boto3
+from botocore.exceptions import ClientError
+
 from app.core.config import settings
 
-_session = boto3.Session(region_name=settings.AWS_REGION)
+logger = logging.getLogger(__name__)
+
+
+def _client(service: str) -> boto3.client:
+    """Create a boto3 client, routing to LocalStack when AWS_ENDPOINT_URL is set."""
+    kwargs: dict[str, Any] = {"region_name": settings.AWS_REGION}
+    if settings.AWS_ENDPOINT_URL:
+        kwargs["endpoint_url"] = settings.AWS_ENDPOINT_URL
+    return boto3.client(service, **kwargs)
 
 
 def get_ec2() -> dict[str, dict[str, Any]]:
-    ec2 = _session.client("ec2")
+    ec2 = _client("ec2")
     instances = {}
     paginator = ec2.get_paginator("describe_instances")
     for page in paginator.paginate():
@@ -27,7 +41,7 @@ def get_ec2() -> dict[str, dict[str, Any]]:
 
 
 def get_s3() -> dict[str, dict[str, Any]]:
-    s3 = _session.client("s3")
+    s3 = _client("s3")
     buckets = {}
     for bucket in s3.list_buckets().get("Buckets", []):
         name = bucket["Name"]
@@ -37,6 +51,7 @@ def get_s3() -> dict[str, dict[str, Any]]:
             versioning = v.get("Status", "Disabled")
         except Exception:
             pass
+
         public_block = {}
         try:
             pb = s3.get_public_access_block(Bucket=name)
@@ -56,7 +71,7 @@ def get_s3() -> dict[str, dict[str, Any]]:
 
 
 def get_security_groups() -> dict[str, dict[str, Any]]:
-    ec2 = _session.client("ec2")
+    ec2 = _client("ec2")
     sgs = {}
     paginator = ec2.get_paginator("describe_security_groups")
     for page in paginator.paginate():
@@ -75,7 +90,7 @@ def get_security_groups() -> dict[str, dict[str, Any]]:
 
 
 def get_iam_roles() -> dict[str, dict[str, Any]]:
-    iam = _session.client("iam")
+    iam = _client("iam")
     roles = {}
     paginator = iam.get_paginator("list_roles")
     for page in paginator.paginate():
@@ -92,20 +107,29 @@ def get_iam_roles() -> dict[str, dict[str, Any]]:
 
 
 def get_rds() -> dict[str, dict[str, Any]]:
-    rds = _session.client("rds")
+    rds = _client("rds")
     instances = {}
-    paginator = rds.get_paginator("describe_db_instances")
-    for page in paginator.paginate():
-        for db in page["DBInstances"]:
-            dbid = db["DBInstanceIdentifier"]
-            instances[dbid] = {
-                "_type": "aws_rds_instances",
-                "id": dbid,
-                "instance_class": db.get("DBInstanceClass", ""),
-                "engine": db.get("Engine", ""),
-                "engine_version": db.get("EngineVersion", ""),
-                "multi_az": str(db.get("MultiAZ", False)),
-                "publicly_accessible": str(db.get("PubliclyAccessible", False)),
-                "deletion_protection": str(db.get("DeletionProtection", False)),
-            }
+    try:
+        paginator = rds.get_paginator("describe_db_instances")
+        for page in paginator.paginate():
+            for db in page["DBInstances"]:
+                dbid = db["DBInstanceIdentifier"]
+                instances[dbid] = {
+                    "_type": "aws_rds_instances",
+                    "id": dbid,
+                    "instance_class": db.get("DBInstanceClass", ""),
+                    "engine": db.get("Engine", ""),
+                    "engine_version": db.get("EngineVersion", ""),
+                    "multi_az": str(db.get("MultiAZ", False)),
+                    "publicly_accessible": str(db.get("PubliclyAccessible", False)),
+                    "deletion_protection": str(db.get("DeletionProtection", False)),
+                }
+    except ClientError as e:
+        code = e.response["Error"]["Code"]
+        if code == "InternalFailure":
+            logger.warning(
+                "RDS not available in this environment (LocalStack?), skipping"
+            )
+        else:
+            raise
     return instances
