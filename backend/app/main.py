@@ -1,7 +1,11 @@
 import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+import os
 from app.api import drift, health, scan
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -21,3 +25,11 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
+
+if os.path.exists("/app/frontend"):
+    app.mount("/static", StaticFiles(directory="/app/frontend"), name="static")
+
+
+@app.get("/")
+def serve_dashboard():
+    return FileResponse("/app/frontend/index.html")
