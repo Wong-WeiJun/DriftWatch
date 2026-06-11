@@ -1,0 +1,145 @@
+name: Deploy to ECS
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - 'models/**'
+      - 'Dockerfile'
+      - 'requirements.txt'
+  workflow_dispatch:
+
+env:
+  AWS_REGION: ap-southeast-2
+  ECR_REPOSITORY: driftwatch-development
+  ECS_CLUSTER: driftwatch-development-cluster
+  ECS_SERVICE: driftwatch-development-service
+
+jobs:
+  build-and-push:
+    name: Build and Push to ECR
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tag }}
+      image_uri: ${{ steps.meta.outputs.image_uri }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Generate image metadata
+        id: meta
+        run: |
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          IMAGE_URI="${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${SHORT_SHA}"
+          echo "tag=${SHORT_SHA}" >> $GITHUB_OUTPUT
+          echo "image_uri=${IMAGE_URI}" >> $GITHUB_OUTPUT
+          echo "IMAGE_URI=${IMAGE_URI}" >> $GITHUB_ENV
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.image_uri }}
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy to ECS
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Render new task definition
+        id: render-task-def
+        run: |
+          # Get current task definition
+          aws ecs describe-task-definition \
+            --task-definition "${{ env.ECS_CLUSTER }}" \
+            --query 'taskDefinition' > task-def.json
+
+          # Remove fields that can't be used in register-task-definition
+          cat task-def.json | jq 'del(
+            .taskDefinitionArn,
+            .revision,
+            .status,
+            .requiresAttributes,
+            .compatibilities,
+            .registeredAt,
+            .registeredBy,
+            .cpu,
+            .memory,
+            .networkMode
+          )' > cleaned-task-def.json
+
+          # Update image
+          NEW_IMAGE="${{ needs.build-and-push.outputs.image_uri }}"
+          cat cleaned-task-def.json | jq \
+            --arg image "$NEW_IMAGE" \
+            '.containerDefinitions[0].image = $image' > new-task-def.json
+
+          echo "New task definition prepared with image: ${NEW_IMAGE}"
+
+      - name: Register new task definition
+        id: register-task-def
+        run: |
+          REGISTERED=$(aws ecs register-task-definition \
+            --cli-input-json file://new-task-def.json \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+          echo "arn=${REGISTERED}" >> $GITHUB_OUTPUT
+          echo "Registered task definition: ${REGISTERED}"
+
+      - name: Deploy ECS service
+        run: |
+          aws ecs update-service \
+            --cluster "${{ env.ECS_CLUSTER }}" \
+            --service "${{ env.ECS_SERVICE }}" \
+            --task-definition "${{ steps.register-task-def.outputs.arn }}" \
+            --force-new-deployment
+
+          echo "ECS service update initiated."
+
+      - name: Wait for service to stabilize
+        run: |
+          aws ecs wait services-stable \
+            --cluster "${{ env.ECS_CLUSTER }}" \
+            --services "${{ env.ECS_SERVICE }}"
+          echo "ECS service is stable!"
+
+      - name: Verify deployment
+        run: |
+          # Wait for ALB to register healthy targets
+          sleep 30
+          HEALTH_URL="${{ vars.API_URL }}/health"
+          echo "Checking health at: ${HEALTH_URL}"
+          curl -sf --retry 5 --retry-delay 10 "${HEALTH_URL}" || (echo "Health check failed!" && exit 1)
+          echo "Deployment verified!"
