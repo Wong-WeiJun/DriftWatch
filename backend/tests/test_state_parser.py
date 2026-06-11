@@ -100,6 +100,7 @@ class TestFetchTfstateFromS3:
         with patch("app.services.state_parser.settings") as mock_settings:
             mock_settings.TF_STATE_BUCKET = "test-bucket"
             mock_settings.AWS_REGION = "us-east-1"
+            mock_settings.AWS_ENDPOINT_URL = None
 
             result = fetch_tfstate_from_s3(key="terraform.tfstate")
 
