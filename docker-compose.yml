@@ -3,32 +3,32 @@
 # =============================================================================
 #
 # Services:
+#   - localstack   : Local AWS mock (DynamoDB, S3, SNS, EC2, IAM)
+#   - dynamodb-init: One-shot — creates the DriftWatch DynamoDB table
+#   - s3-init      : One-shot — creates S3 bucket, seeds tfstate + mock resources
 #   - app          : FastAPI backend (port 8000)
-#   - localstack   : Local AWS mock (DynamoDB, S3, SNS)
-#   - dynamodb-init: One-shot container that creates the DynamoDB table
 #
 # Usage:
 #   docker compose up --build
 #
-#   API          → http://localhost:8000
+#   API docs     → http://localhost:8000/docs
 #   Health       → http://localhost:8000/health
-#   Scan API     → POST http://localhost:8000/api/v1/scan/trigger
-#   Drift Events → GET  http://localhost:8000/api/v1/drifts/events
-#
+#   Scan         → POST http://localhost:8000/api/v1/scan/trigger
+#   Drift events → GET  http://localhost:8000/api/v1/drifts/events
 #   LocalStack   → http://localhost:4566
-#
 # =============================================================================
 
 services:
+
   # ---------------------------------------------------------------------------
-  # LocalStack — mocks DynamoDB, S3 and SNS so the app works without real AWS
+  # LocalStack — mocks all AWS services used by DriftWatch
   # ---------------------------------------------------------------------------
   localstack:
     image: localstack/localstack:3
     ports:
       - "4566:4566"
     environment:
-      SERVICES: dynamodb,s3,sns
+      SERVICES: dynamodb,s3,sns,ec2,iam
       DEBUG: "0"
     volumes:
       - localstack-data:/var/lib/localstack
@@ -44,16 +44,38 @@ services:
       start_period: 5s
 
   # ---------------------------------------------------------------------------
-  # DynamoDB table init — runs once, creates the driftwatch table in localstack
+  # DynamoDB init — creates the driftwatch table (runs once)
   # ---------------------------------------------------------------------------
   dynamodb-init:
     build: .
     command: >
-      python -c "import time; time.sleep(2); from app.core.database import init_db; init_db(); print('DynamoDB table ready')"
+      python -c "
+      import time; time.sleep(2);
+      from app.core.database import init_db;
+      init_db();
+      print('DynamoDB table ready')
+      "
     environment:
       AWS_REGION: ap-southeast-2
       DYNAMODB_TABLE_NAME: driftwatch
-      DYNAMODB_ENDPOINT_URL: http://localstack:4566
+      AWS_ENDPOINT_URL: http://localstack:4566
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+    depends_on:
+      localstack:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------------
+  # S3 init — creates bucket, seeds tfstate + mock AWS resources (runs once)
+  # ---------------------------------------------------------------------------
+  s3-init:
+    build: .
+    command: python /app/scripts/seed_localstack.py
+    volumes:
+      - ./backend/scripts:/app/scripts:ro
+    environment:
+      AWS_REGION: ap-southeast-2
+      AWS_ENDPOINT_URL: http://localstack:4566
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
     depends_on:
@@ -69,26 +91,38 @@ services:
     ports:
       - "8000:8000"
     environment:
+      # App
       APP_NAME: DriftWatch
       ENV: development
       DEBUG: "true"
+
+      # AWS — single endpoint override routes all boto3 calls to LocalStack
       AWS_REGION: ap-southeast-2
-      DYNAMODB_TABLE_NAME: driftwatch
-      DYNAMODB_ENDPOINT_URL: http://localstack:4566
-      TF_STATE_BUCKET: driftwatch-local-state
-      SNS_TOPIC_ARN: ""
-      SCAN_INTERVAL_HOURS: "3"
+      AWS_ENDPOINT_URL: http://localstack:4566
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
+
+      # DynamoDB
+      DYNAMODB_TABLE_NAME: driftwatch
+
+      # Terraform state (matches what seed_localstack.py creates)
+      TF_STATE_BUCKET: driftwatch-local-state
+      TF_STATE_KEY: terraform.tfstate
+
+      # SNS — empty locally, no alerts sent
+      SNS_TOPIC_ARN: ""
+
+      SCAN_INTERVAL_HOURS: "3"
       PYTHONDONTWRITEBYTECODE: "1"
       PYTHONUNBUFFERED: "1"
     volumes:
-      # Hot-reload: changes in ./backend/ are reflected immediately
       - ./backend:/app:ro
     depends_on:
       localstack:
         condition: service_healthy
       dynamodb-init:
+        condition: service_completed_successfully
+      s3-init:
         condition: service_completed_successfully
     healthcheck:
       test:
