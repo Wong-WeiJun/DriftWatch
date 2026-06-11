@@ -20,9 +20,6 @@
 
 services:
 
-  # ---------------------------------------------------------------------------
-  # LocalStack — mocks all AWS services used by DriftWatch
-  # ---------------------------------------------------------------------------
   localstack:
     image: localstack/localstack:3
     ports:
@@ -43,19 +40,14 @@ services:
       retries: 10
       start_period: 5s
 
-  # ---------------------------------------------------------------------------
-  # DynamoDB init — creates the driftwatch table (runs once)
-  # ---------------------------------------------------------------------------
   dynamodb-init:
     build: .
-    command: >
-      python -c "
-      import time; time.sleep(2);
-      from app.core.database import init_db;
-      init_db();
-      print('DynamoDB table ready')
-      "
+    command: >-
+      python -c
+      "import time; time.sleep(2);
+      exec(open('/dev/stdin').read())"
     environment:
+      PYTHONPATH: /app
       AWS_REGION: ap-southeast-2
       DYNAMODB_TABLE_NAME: driftwatch
       AWS_ENDPOINT_URL: http://localstack:4566
@@ -65,15 +57,11 @@ services:
       localstack:
         condition: service_healthy
 
-  # ---------------------------------------------------------------------------
-  # S3 init — creates bucket, seeds tfstate + mock AWS resources (runs once)
-  # ---------------------------------------------------------------------------
   s3-init:
     build: .
     command: python /app/scripts/seed_localstack.py
-    volumes:
-      - ./backend/scripts:/app/scripts:ro
     environment:
+      PYTHONPATH: /app
       AWS_REGION: ap-southeast-2
       AWS_ENDPOINT_URL: http://localstack:4566
       AWS_ACCESS_KEY_ID: test
@@ -82,41 +70,33 @@ services:
       localstack:
         condition: service_healthy
 
-  # ---------------------------------------------------------------------------
-  # DriftWatch FastAPI app
-  # ---------------------------------------------------------------------------
   app:
     build: .
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     ports:
       - "8000:8000"
     environment:
-      # App
+      PYTHONPATH: /app
       APP_NAME: DriftWatch
       ENV: development
       DEBUG: "true"
-
-      # AWS — single endpoint override routes all boto3 calls to LocalStack
       AWS_REGION: ap-southeast-2
       AWS_ENDPOINT_URL: http://localstack:4566
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
-
-      # DynamoDB
       DYNAMODB_TABLE_NAME: driftwatch
-
-      # Terraform state (matches what seed_localstack.py creates)
       TF_STATE_BUCKET: driftwatch-local-state
       TF_STATE_KEY: terraform.tfstate
-
-      # SNS — empty locally, no alerts sent
       SNS_TOPIC_ARN: ""
-
       SCAN_INTERVAL_HOURS: "3"
       PYTHONDONTWRITEBYTECODE: "1"
       PYTHONUNBUFFERED: "1"
     volumes:
-      - ./backend:/app:ro
+      # Hot-reload mounts backend/ over /app — models and scripts included
+      - ./backend/app:/app/app:ro
+      - ./backend/models:/app/models:ro
+      - ./backend/scripts:/app/scripts:ro
+      - ./frontend:/app/frontend:ro 
     depends_on:
       localstack:
         condition: service_healthy
