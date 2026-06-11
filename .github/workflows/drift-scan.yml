@@ -30,7 +30,7 @@ jobs:
         env:
           API_URL: ${{ vars.API_URL }}
           DRY_RUN: ${{ env.IS_DRY_RUN }}
-          RESOURCE_TYPES: ${{ inputs.resource_types }}
+          RESOURCE_TYPES: ${{ inputs.resource_types || '' }}
         run: |
           echo "is_dry_run=${DRY_RUN}" >> $GITHUB_ENV
 
@@ -55,7 +55,7 @@ jobs:
 
           # Extract scan_id for follow-up
           SCAN_ID=$(echo "$RESPONSE" | jq -r '.scan_id')
-          echo "scan_id=${SCAN_ID}" >> $GITHUB_ENV
+          echo "SCAN_ID=${SCAN_ID}" >> $GITHUB_ENV
 
           # Verify we got a 200 and proper response structure
           if [ -z "$SCAN_ID" ] || [ "$SCAN_ID" = "null" ]; then
@@ -89,6 +89,7 @@ jobs:
           echo "$EVENTS" | jq .
 
       - name: Report results
+        if: always()
         env:
           API_URL: ${{ vars.API_URL }}
         run: |
@@ -97,7 +98,10 @@ jobs:
           echo "Dry run:   ${{ env.is_dry_run }}"
           echo "Scan ID:   ${SCAN_ID}"
 
-          # Get summary (works for both dry-run and background scan)
-          SUMMARY=$(curl -sf "${API_URL}/drifts/scans/${SCAN_ID}")
-          echo "Summary:"
-          echo "$SUMMARY" | jq .
+          if [ -n "$SCAN_ID" ] && [ "$SCAN_ID" != "null" ]; then
+            SUMMARY=$(curl -sf "${API_URL}/drifts/scans/${SCAN_ID}")
+            echo "Summary:"
+            echo "$SUMMARY" | jq .
+          else
+            echo "No scan_id available"
+          fi
