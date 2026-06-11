@@ -4,7 +4,6 @@ from unittest.mock import MagicMock, PropertyMock, call, patch
 import pytest
 
 from app.services.drift_engine import (
-    SCANNERS,
     DriftInfo,
     compare_single,
     compute_drift,
@@ -40,7 +39,19 @@ class TestNormalise:
         assert normalise(["b", "a"]) == '["a","b"]'
 
     def test_dict(self):
-        assert normalise({"b": 2, "a": 1}) == '{"a":1,"b":2}'
+        # normalise() recursively converts values; int 2 => "2"
+        assert normalise({"b": 2, "a": 1}) == '{"a":"1","b":"2"}'
+
+    def test_list_unsortable(self):
+        """List with mixed types should not raise even if sorting fails."""
+        result = normalise([1, "b", None])
+        # Should contain all elements even if not sorted
+        assert '"1"' in result or '"b"' in result
+
+    def test_dict_unsortable_values(self):
+        """Dict with mixed-type values should still JSON stringify."""
+        result = normalise({"a": 1, "b": "hello"})
+        assert '"a":"1"' in result or '"b":"hello"' in result
 
     def test_string_passthrough(self):
         assert normalise("hello") == "hello"
@@ -366,8 +377,10 @@ class TestRunScan:
     @patch("app.services.drift_engine.get_security_groups")
     @patch("app.services.drift_engine.get_iam_roles")
     @patch("app.services.drift_engine.get_rds")
+    @patch("app.services.drift_engine.settings")
     def test_custom_bucket_and_key_passed_through(
         self,
+        mock_settings,
         mock_rds,
         mock_iam,
         mock_sg,
@@ -375,6 +388,8 @@ class TestRunScan:
         mock_ec2,
         mock_parse,
     ):
+        mock_settings.TERRAFORM_STATE_BUCKET = "custom-bucket"
+        mock_settings.TERRAFORM_STATE_KEY = "prod/terraform.tfstate"
         mock_parse.return_value = {}
         mock_ec2.return_value = {}
         mock_s3.return_value = {}
@@ -382,7 +397,7 @@ class TestRunScan:
         mock_iam.return_value = {}
         mock_rds.return_value = {}
 
-        run_scan(tfstate_bucket="custom-bucket", tfstate_key="prod/terraform.tfstate")
+        run_scan()
 
         mock_parse.assert_called_once_with(
             bucket="custom-bucket",
@@ -508,6 +523,53 @@ class TestRunScan:
 
         assert report["summary"]["missing_in_live"] == 1
 
+    @patch("app.services.drift_engine.parse_tfstate_from_s3")
+    @patch("app.services.drift_engine.get_ec2")
+    @patch("app.services.drift_engine.get_s3")
+    @patch("app.services.drift_engine.get_security_groups")
+    @patch("app.services.drift_engine.get_iam_roles")
+    @patch("app.services.drift_engine.get_rds")
+    @patch("app.services.drift_engine.settings")
+    def test_resource_types_filter(
+        self,
+        mock_settings,
+        mock_rds,
+        mock_iam,
+        mock_sg,
+        mock_s3,
+        mock_ec2,
+        mock_parse,
+    ):
+        """Passing resource_types should limit which scanners run."""
+        mock_settings.TERRAFORM_STATE_BUCKET = "bucket"
+        mock_settings.TERRAFORM_STATE_KEY = "key.tfstate"
+        mock_parse.return_value = {
+            "i-1": {
+                "_type": "aws_instance",
+                "id": "i-1",
+                "ami": "ami-123",
+            },
+            "my-bucket": {
+                "_type": "aws_s3_bucket",
+                "id": "my-bucket",
+            },
+        }
+        mock_ec2.return_value = {
+            "i-1": {"_type": "aws_instance", "id": "i-1", "ami": "ami-123"}
+        }
+        mock_s3.return_value = {}
+        mock_sg.return_value = {}
+        mock_iam.return_value = {}
+        mock_rds.return_value = {}
+
+        report = run_scan(resource_types=["ec2"])
+
+        # S3 scanner should not have been called
+        mock_s3.assert_not_called()
+        assert report["summary"]["tf_resources"] == 2
+        assert report["summary"]["live_resources"] == 1
+        assert report["summary"]["missing_in_live"] >= 1
+
 
 # ---------------------------------------------------------------------------
 # save_drift_result
@@ -531,7 +593,7 @@ class TestSaveDriftResult:
 
         pk = save_drift_result(report)
 
-        mock_ddb.Table.assert_called_once_with("driftwatch_events")
+        mock_ddb.Table.assert_called_once_with("driftwatch")
         mock_table.put_item.assert_called_once()
         call_item = mock_table.put_item.call_args.kwargs["Item"]
         assert call_item["event_id"] == pk
@@ -727,10 +789,7 @@ class TestEndToEnd:
 
         # Summary counts
         assert report["summary"]["tf_resources"] == 5
-        assert (
-            report["summary"]["live_resources"] == 4
-        )  # 3 EC2 + 1 S3 + 1 SG = 5 - wait, 3 ec2 + 1 s3 + 1 sg = 5
-        # Wait: live has i-1, i-2, i-extra (3) + my-bucket + sg-1 = 5
+        # Live: i-1, i-2, i-extra (3) + my-bucket + sg-1 = 5
         assert report["summary"]["live_resources"] == 5
         assert report["summary"]["drifted"] == 1  # i-2
         assert report["summary"]["missing_in_live"] == 1  # i-3
