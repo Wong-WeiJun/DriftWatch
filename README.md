@@ -1,4 +1,4 @@
-# 🛰️ DriftWatch
+# DriftWatch
 
 > Automated cloud infrastructure drift detection for AWS + Terraform
 
