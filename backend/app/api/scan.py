@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import logging
+import time
 import uuid
 from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks
 
-from models.drift import DriftEvent, ScanResult, ScanTriggerRequest
+from app.core.metrics import record_scan
 from app.services.drift_engine import run_scan
 from app.services.notifier import publish_drift_alert
 from app.services.store import save_scan_result
+from models.drift import DriftEvent, ScanResult, ScanTriggerRequest
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/scan", tags=["scan"])
@@ -66,11 +68,19 @@ def _convert_report_to_scan_result(report: dict[str, Any], scan_id: str) -> Scan
 
 def _run_and_persist(scan_id: str, resource_types: list[str] | None) -> None:
     """Background task — runs scan, saves results, sends alert."""
+    started = time.perf_counter()
     try:
         report = run_scan(resource_types=resource_types)
         result = _convert_report_to_scan_result(report, scan_id)
         save_scan_result(result)
         publish_drift_alert(result)
+        record_scan(
+            status="success",
+            dry_run=False,
+            duration_seconds=time.perf_counter() - started,
+            report=report,
+            drift_events=result.drift_events,
+        )
         logger.info(
             "Scan %s complete - %d drift(s) across %d resources",
             scan_id[:8],
@@ -78,6 +88,11 @@ def _run_and_persist(scan_id: str, resource_types: list[str] | None) -> None:
             result.resource_scanned,
         )
     except Exception:
+        record_scan(
+            status="error",
+            dry_run=False,
+            duration_seconds=time.perf_counter() - started,
+        )
         logger.exception("Background scan failed")
 
 
@@ -96,8 +111,24 @@ def trigger_scan(
 
     if body.dry_run:
         logger.info("Dry run triggered")
-        report = run_scan(resource_types=body.resource_types)
-        result = _convert_report_to_scan_result(report, scan_id)
+        started = time.perf_counter()
+        try:
+            report = run_scan(resource_types=body.resource_types)
+            result = _convert_report_to_scan_result(report, scan_id)
+            record_scan(
+                status="success",
+                dry_run=True,
+                duration_seconds=time.perf_counter() - started,
+                report=report,
+                drift_events=result.drift_events,
+            )
+        except Exception:
+            record_scan(
+                status="error",
+                dry_run=True,
+                duration_seconds=time.perf_counter() - started,
+            )
+            raise
         return {
             "scan_id": scan_id,
             "dry_run": True,
