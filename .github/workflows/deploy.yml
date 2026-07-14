@@ -137,7 +137,8 @@ jobs:
         run: |
           # Wait for ALB to register healthy targets
           sleep 30
-          HEALTH_URL="${{ vars.API_URL }}/health"
+          API_URL="${{ vars.API_URL }}"
+          HEALTH_URL="${API_URL%/}/health"
           echo "Checking health at: ${HEALTH_URL}"
           curl -sf --retry 5 --retry-delay 10 "${HEALTH_URL}" || (echo "Health check failed!" && exit 1)
           echo "Deployment verified!"

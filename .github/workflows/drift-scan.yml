@@ -42,13 +42,16 @@ jobs:
             PAYLOAD=$(printf '{"dry_run":%s}' "$DRY_RUN")
           fi
 
-          echo "Triggering drift scan at: ${API_URL}/scan/trigger"
+          # Strip trailing slash so paths concatenate cleanly
+          API_URL="${API_URL%/}"
+
+          echo "Triggering drift scan at: ${API_URL}/api/v1/scan/trigger"
           echo "Payload: ${PAYLOAD}"
 
           RESPONSE=$(curl -sS -X POST \
             -H "Content-Type: application/json" \
             -d "$PAYLOAD" \
-            "${API_URL}/scan/trigger")
+            "${API_URL}/api/v1/scan/trigger")
 
           echo "Response:"
           echo "$RESPONSE" | jq .
@@ -71,14 +74,15 @@ jobs:
         env:
           API_URL: ${{ vars.API_URL }}
         run: |
+          API_URL="${API_URL%/}"
           echo "Waiting for background scan to complete..."
           sleep 30
 
           for i in $(seq 1 10); do
-            RESULT=$(curl -sS "${API_URL}/drifts/scans/${SCAN_ID}")
+            RESULT=$(curl -sS "${API_URL}/api/v1/drifts/scans/${SCAN_ID}")
             STATUS=$(echo "$RESULT" | jq -r '.status')
             echo "Attempt $i: status = $STATUS"
-            if [ "$STATUS" != "queued" ]; then
+            if [ "$STATUS" != "queued" ] && [ "$STATUS" != "null" ]; then
               echo "SCAN COMPLETE!"
               echo "$RESULT" | jq .
               break
@@ -87,7 +91,7 @@ jobs:
           done
 
           # Fetch drift events for this scan
-          EVENTS=$(curl -sS "${API_URL}/drifts/events?scan_id=${SCAN_ID}&limit=100")
+          EVENTS=$(curl -sS "${API_URL}/api/v1/drifts/events?scan_id=${SCAN_ID}&limit=100")
           echo "Drift events for scan ${SCAN_ID}:"
           echo "$EVENTS" | jq .
 
