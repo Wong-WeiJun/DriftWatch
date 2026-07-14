@@ -1,12 +1,13 @@
 import logging
-from fastapi import FastAPI, APIRouter
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
 import os
+
+from fastapi import APIRouter, FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from prometheus_fastapi_instrumentator import Instrumentator
+
 from app.api import drift, health, scan
-
-
 from app.core.config import settings
 
 logging.basicConfig(
@@ -24,6 +25,12 @@ app.include_router(api_router)
 
 # Health check at /health (no prefix)
 app.include_router(health.router)
+
+# HTTP RED metrics (Rate, Errors, Duration). Exclude /metrics so scrapes
+# do not inflate their own request counters.
+Instrumentator(excluded_handlers=["/metrics"]).instrument(app).expose(
+    app, endpoint="/metrics", include_in_schema=False
+)
 
 
 app.add_middleware(
