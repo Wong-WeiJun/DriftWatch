@@ -309,7 +309,7 @@ docker push <account>.dkr.ecr.<region>.amazonaws.com/driftwatch-development:late
 | Secret / Variable | Value |
 |---|---|
 | `AWS_ROLE_ARN` | IAM role ARN from `github_actions.tf` output |
-| `API_URL` | ALB DNS name (e.g. `https://driftwatch-alb-xxx.ap-southeast-2.elb.amazonaws.com`) |
+| `API_URL` | ALB base URL as a **repository Variable** (not Secret), e.g. `http://driftwatch-development-alb-xxx.ap-southeast-2.elb.amazonaws.com` — no trailing slash |
 
 ---
 
