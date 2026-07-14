@@ -1,0 +1,38 @@
+# Alert rules evaluated by Prometheus locally (no Alertmanager wired up).
+# Open http://localhost:9090/alerts to see inactive / pending / firing state.
+# Delivery (SNS, Slack, PagerDuty) is Phase 2 — rules exist so we know
+# what "broken in prod" would look like before plumbing a pager.
+
+groups:
+  - name: driftwatch
+    rules:
+      - alert: DriftWatchScanFailureRate
+        expr: |
+          (
+            sum(rate(driftwatch_scans_total{status="error"}[5m]))
+            /
+            clamp_min(sum(rate(driftwatch_scans_total[5m])), 1e-9)
+          ) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: DriftWatch scan failure rate is high
+          description: >
+            More than 10% of scans have failed over the last 5 minutes.
+            Check app logs and AWS/LocalStack connectivity.
+
+      - alert: DriftWatchScanLatencyHigh
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(rate(driftwatch_scan_duration_seconds_bucket[5m])) by (le)
+          ) > 60
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: DriftWatch p95 scan duration is above 60s
+          description: >
+            95th percentile scan duration exceeded 60 seconds for 5 minutes.
+            Investigate slow scanners or Terraform state fetch from S3.
