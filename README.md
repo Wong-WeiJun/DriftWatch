@@ -50,7 +50,7 @@ DriftWatch closes this visibility gap.
 | Infrastructure | Terraform (modular), AWS ECS Fargate, ALB, DynamoDB, S3, SNS, VPC |
 | CI/CD | GitHub Actions (OIDC authentication — no long-lived AWS keys) |
 | Frontend | Vanilla HTML/JS, dark theme, served from FastAPI |
-| Local Dev | Docker Compose, LocalStack |
+| Local Dev | Docker Compose, LocalStack, Prometheus, Grafana |
 
 ---
 
@@ -73,6 +73,7 @@ Severity is auto-assigned: **high** for critical attributes like `instance_type`
 | Endpoint | Method | Description |
 |---|---|---|
 | `/health` | GET | Health check |
+| `/metrics` | GET | Prometheus metrics (HTTP RED + scan/drift) |
 | `/api/v1/scan/trigger` | POST | Trigger a drift scan (`dry_run` or full) |
 | `/api/v1/drifts/events` | GET | List drift events (filter by `scan_id`, `limit`) |
 | `/api/v1/drifts/scans` | GET | List scan summaries |
@@ -89,7 +90,7 @@ driftwatch/
 ├── backend/
 │   ├── app/
 │   │   ├── api/               # FastAPI routers (health, drift, scan)
-│   │   ├── core/              # Pydantic settings, config, DB init
+│   │   ├── core/              # Pydantic settings, config, DB init, metrics
 │   │   └── services/
 │   │       ├── scanner.py     # boto3 live AWS resource scanning
 │   │       ├── state_parser.py# Terraform state JSON parser
@@ -126,12 +127,16 @@ driftwatch/
 │       ├── s3/                # Terraform state bucket
 │       └── sns/               # Drift alert topic + email subscription
 │
+├── monitoring/
+│   ├── prometheus/            # scrape config + alert rules
+│   └── grafana/               # datasource + dashboard provisioning
+│
 ├── .github/workflows/
 │   ├── ci.yml                 # Lint → Test → Docker build test
 │   ├── deploy.yml             # Build → Push ECR → Deploy ECS (on main)
 │   └── drift-scan.yml         # Scheduled scan every 6 hours + manual trigger
 │
-├── docker-compose.yml         # Local dev: LocalStack + FastAPI
+├── docker-compose.yml         # Local dev: LocalStack + FastAPI + Prometheus + Grafana
 ├── Dockerfile                 # Multi-stage build (Python 3.12 slim)
 ├── requirements.txt           # Production Python deps
 └── .gitignore
@@ -152,7 +157,7 @@ driftwatch/
 git clone https://github.com/<your-username>/driftwatch.git
 cd driftwatch
 
-# Start everything — LocalStack, DynamoDB init, S3 init, FastAPI
+# Start everything — LocalStack, DynamoDB init, S3 init, FastAPI, Prometheus, Grafana
 docker compose up --build
 ```
 
@@ -161,12 +166,44 @@ docker compose up --build
 | Dashboard | http://localhost:8000/ |
 | API Docs (Swagger) | http://localhost:8000/docs |
 | Health Check | http://localhost:8000/health |
+| Prometheus metrics | http://localhost:8000/metrics |
 | LocalStack | http://localhost:4566 |
+| Prometheus | http://localhost:9090 |
+| Grafana | http://localhost:3000 (admin / admin) |
 
 The compose stack spins up:
 - **LocalStack** with DynamoDB, S3, SNS, EC2, and IAM mocks
 - **One-shot init containers** that create the DynamoDB table and seed mock AWS resources + a Terraform state file
 - **FastAPI app** with hot-reload from your local `backend/` and `frontend/` directories
+- **Prometheus** scraping `app:8000/metrics` every 15s (see Alerts tab for rule state)
+- **Grafana** with a provisioned DriftWatch Overview dashboard
+
+### Observability
+
+HTTP metrics follow the **RED method** (Rate, Errors, Duration) via `prometheus-fastapi-instrumentator`; domain metrics cover scan success/latency and drift volume by bounded `kind`/`severity` so you can see both “is the API healthy?” and “is drift detection working?”.
+
+Label values are closed sets (`status`, `dry_run`, `kind`, `severity`) — free-form strings like resource IDs are never used as labels, which keeps Prometheus series cardinality bounded.
+
+```bash
+# Open Grafana → Dashboards → DriftWatch Overview
+# Trigger a scan, then watch the panels update
+curl -X POST http://localhost:8000/api/v1/scan/trigger \
+  -H "Content-Type: application/json" \
+  -d '{"dry_run": true}'
+
+# Optional: confirm scrape target is UP and alert rules are loaded
+# http://localhost:9090/targets
+# http://localhost:9090/alerts
+```
+
+#### Phase 2 (deliberately deferred)
+
+These are intentional follow-ups, not gaps we forgot:
+
+- **Structured logging** (JSON + request/scan correlation IDs) — metrics say *that* something failed; logs say *why*
+- **OpenTelemetry tracing** (or X-Ray on AWS) — follow one scan across S3 → scanners → DynamoDB → SNS
+- **Alertmanager / pager routing** — rules ship in `monitoring/prometheus/alerts.yml`; delivery (SNS, Slack, PagerDuty) waits for a real prod scraper
+- **Prod scrape path** — ECS/ALB or Amazon Managed Prometheus + Grafana once `/metrics` is proven locally
 
 ### Running Tests
 
@@ -305,6 +342,7 @@ The dashboard is intentionally lightweight (a single `index.html` file). It load
 | Alerts | SNS + email | Simple, reliable, no external service dependency |
 | Scheduling | GitHub Actions cron | Zero infrastructure cost, audit trail built-in |
 | Testing | pytest + moto | Fast unit tests with mocked AWS services |
+| Local metrics | Prometheus + Grafana via Compose | Learn RED + domain metrics before prod scrape |
 
 ---
 
@@ -316,6 +354,7 @@ The dashboard is intentionally lightweight (a single `index.html` file). It load
 - [ ] **Additional AWS services** — Lambda, EKS, CloudFront, Route53
 - [ ] **Terraform Cloud / TFE state support** — Read state from remote backends
 - [ ] **RBAC / API keys** — Multi-team access with scoped permissions
+- [ ] **Prod metrics path** — AMP / Grafana Cloud scrapers (rules already live locally)
 
 ---
 
