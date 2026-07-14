@@ -2,6 +2,8 @@ fastapi
 uvicorn
 boto3
 pydantic-settings
+prometheus-client
+prometheus-fastapi-instrumentator
 httpx
 pytest
 pytest-cov
