@@ -9,14 +9,9 @@
   "links": [],
   "panels": [
     {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
-        "defaults": {
-          "unit": "reqps"
-        },
+        "defaults": { "unit": "reqps" },
         "overrides": []
       },
       "gridPos": { "h": 8, "w": 8, "x": 0, "y": 0 },
@@ -32,14 +27,9 @@
       ]
     },
     {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
-        "defaults": {
-          "unit": "reqps"
-        },
+        "defaults": { "unit": "reqps" },
         "overrides": []
       },
       "gridPos": { "h": 8, "w": 8, "x": 8, "y": 0 },
@@ -55,14 +45,9 @@
       ]
     },
     {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
-        "defaults": {
-          "unit": "s"
-        },
+        "defaults": { "unit": "s" },
         "overrides": []
       },
       "gridPos": { "h": 8, "w": 8, "x": 16, "y": 0 },
@@ -78,60 +63,51 @@
       ]
     },
     {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Scans completed in the last hour (increase works better than rate for infrequent scans).",
       "fieldConfig": {
         "defaults": {
-          "unit": "ops"
+          "unit": "short",
+          "decimals": 0,
+          "custom": { "fillOpacity": 20, "drawStyle": "bars", "barAlignment": 0 }
         },
         "overrides": []
       },
       "gridPos": { "h": 8, "w": 8, "x": 0, "y": 8 },
       "id": 4,
-      "title": "Scan rate by status",
+      "title": "Scans by status (1h)",
       "type": "timeseries",
       "targets": [
         {
-          "expr": "sum by (status) (rate(driftwatch_scans_total[5m]))",
+          "expr": "sum by (status) (increase(driftwatch_scans_total[1h]))",
           "legendFormat": "{{status}}",
           "refId": "A"
         }
       ]
     },
     {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "p95 of scan durations over the last hour via increase() on histogram buckets.",
       "fieldConfig": {
-        "defaults": {
-          "unit": "s"
-        },
+        "defaults": { "unit": "s", "decimals": 2 },
         "overrides": []
       },
       "gridPos": { "h": 8, "w": 8, "x": 8, "y": 8 },
       "id": 5,
-      "title": "Scan duration p95",
+      "title": "Scan duration p95 (1h)",
       "type": "timeseries",
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, sum(rate(driftwatch_scan_duration_seconds_bucket[5m])) by (le))",
+          "expr": "histogram_quantile(0.95, sum by (le) (increase(driftwatch_scan_duration_seconds_bucket[1h])))",
           "legendFormat": "p95",
           "refId": "A"
         }
       ]
     },
     {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
-        "defaults": {
-          "unit": "short"
-        },
+        "defaults": { "unit": "short" },
         "overrides": []
       },
       "gridPos": { "h": 8, "w": 8, "x": 16, "y": 8 },
@@ -147,47 +123,101 @@
       ]
     },
     {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Drift findings recorded in the last hour, broken down by kind.",
       "fieldConfig": {
         "defaults": {
-          "unit": "ops"
+          "unit": "short",
+          "decimals": 0,
+          "custom": { "fillOpacity": 20, "drawStyle": "bars", "barAlignment": 0 }
         },
         "overrides": []
       },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
       "id": 7,
-      "title": "Drift events by kind",
+      "title": "Drift events by kind (1h)",
       "type": "timeseries",
       "targets": [
         {
-          "expr": "sum by (kind) (rate(driftwatch_drift_events_total[5m]))",
+          "expr": "sum by (kind) (increase(driftwatch_drift_events_total[1h]))",
           "legendFormat": "{{kind}}",
           "refId": "A"
         }
       ]
     },
     {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Drift findings recorded in the last hour, broken down by severity.",
       "fieldConfig": {
         "defaults": {
-          "unit": "ops"
+          "unit": "short",
+          "decimals": 0,
+          "custom": { "fillOpacity": 20, "drawStyle": "bars", "barAlignment": 0 }
         },
         "overrides": []
       },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
       "id": 8,
-      "title": "Drift events by severity",
+      "title": "Drift events by severity (1h)",
       "type": "timeseries",
       "targets": [
         {
-          "expr": "sum by (severity) (rate(driftwatch_drift_events_total[5m]))",
+          "expr": "sum by (severity) (increase(driftwatch_drift_events_total[1h]))",
           "legendFormat": "{{severity}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "decimals": 0 },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 24 },
+      "id": 9,
+      "title": "Total scans (lifetime)",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "sum(driftwatch_scans_total)",
+          "legendFormat": "scans",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "decimals": 0 },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 24 },
+      "id": 10,
+      "title": "Total drift findings (lifetime)",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "sum(driftwatch_drift_events_total)",
+          "legendFormat": "findings",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "decimals": 2 },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 24 },
+      "id": 11,
+      "title": "Avg scan duration",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "sum(driftwatch_scan_duration_seconds_sum) / clamp_min(sum(driftwatch_scan_duration_seconds_count), 1)",
+          "legendFormat": "avg",
           "refId": "A"
         }
       ]
@@ -202,5 +232,5 @@
   "timezone": "browser",
   "title": "DriftWatch Overview",
   "uid": "driftwatch-overview",
-  "version": 1
+  "version": 2
 }
