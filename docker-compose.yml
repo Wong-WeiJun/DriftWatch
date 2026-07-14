@@ -7,15 +7,20 @@
 #   - dynamodb-init: One-shot — creates the DriftWatch DynamoDB table
 #   - s3-init      : One-shot — creates S3 bucket, seeds tfstate + mock resources
 #   - app          : FastAPI backend (port 8000)
+#   - prometheus   : Scrapes app /metrics (port 9090)
+#   - grafana      : Dashboards over Prometheus (port 3000, admin/admin)
 #
 # Usage:
 #   docker compose up --build
 #
 #   API docs     → http://localhost:8000/docs
 #   Health       → http://localhost:8000/health
+#   Metrics      → http://localhost:8000/metrics
 #   Scan         → POST http://localhost:8000/api/v1/scan/trigger
 #   Drift events → GET  http://localhost:8000/api/v1/drifts/events
 #   LocalStack   → http://localhost:4566
+#   Prometheus   → http://localhost:9090  (Alerts tab shows rule state)
+#   Grafana      → http://localhost:3000  (admin / admin)
 # =============================================================================
 
 services:
@@ -94,7 +99,7 @@ services:
       - ./backend/app:/app/app:ro
       - ./backend/models:/app/models:ro
       - ./backend/scripts:/app/scripts:ro
-      - ./frontend:/app/frontend:ro 
+      - ./frontend:/app/frontend:ro
     depends_on:
       localstack:
         condition: service_healthy
@@ -113,5 +118,39 @@ services:
       retries: 5
       start_period: 5s
 
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle
+    depends_on:
+      app:
+        condition: service_healthy
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+
 volumes:
   localstack-data:
+  prometheus-data:
+  grafana-data:
