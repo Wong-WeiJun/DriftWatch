@@ -30,10 +30,23 @@ def _extract_by_type(res_type: str, attrs: dict[str, Any]) -> dict[str, Any]:
         out["key_name"] = attrs.get("key_name", "")
         out["public_ip"] = attrs.get("public_ip", "")
         out["private_ip"] = attrs.get("private_ip", "")
-        out["state"] = attrs.get("instance_state", "")
+        out["state"] = attrs.get("instance_state", attrs.get("state", ""))
 
     elif res_type == "aws_s3_bucket":
         out["bucket"] = attrs.get("bucket", attrs.get("id", ""))
+        # Optional attrs when present in state (or demo seed). Real TF often
+        # stores public-access-block as a separate resource type.
+        if "versioning" in attrs:
+            versioning = attrs["versioning"]
+            if isinstance(versioning, dict):
+                out["versioning"] = (
+                    "Enabled" if versioning.get("enabled") else "Disabled"
+                )
+            else:
+                out["versioning"] = str(versioning)
+        for key in ("block_public_acls", "block_public_policy"):
+            if key in attrs:
+                out[key] = str(attrs[key])
 
     elif res_type == "aws_s3_bucket_public_access_block":
         out["bucket"] = attrs.get("bucket", "")
