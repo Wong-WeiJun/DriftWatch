@@ -189,7 +189,9 @@ class TestScanEndpoints:
 
         response = client.post(f"{API_PREFIX}/scan/trigger", json={"dry_run": True})
         assert response.status_code == 200
-        by_attr = {e["attribute"]: e["severity"] for e in response.json()["drift_events"]}
+        by_attr = {
+            e["attribute"]: e["severity"] for e in response.json()["drift_events"]
+        }
         assert by_attr["instance_type"] == "high"
         assert by_attr["max_session_duration"] == "medium"
         assert by_attr["tags"] == "low"
