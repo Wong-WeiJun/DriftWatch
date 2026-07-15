@@ -352,9 +352,7 @@ def build_tfstate(
     for i, sg in enumerate(security_groups):
         sid = sg["GroupId"]
         live_ingress = len(sg.get("IpPermissions", []))
-        live_tags = {
-            t["Key"]: t["Value"] for t in sg.get("Tags", []) if "Key" in t
-        }
+        live_tags = {t["Key"]: t["Value"] for t in sg.get("Tags", []) if "Key" in t}
         # HIGH: TF claims 0 ingress for first SG even if live has rules
         tf_ingress = [] if i == 0 else ([{"from_port": 443}] * live_ingress)
         resources.append(
