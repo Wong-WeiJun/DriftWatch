@@ -192,13 +192,28 @@ def get_scan_summary(scan_id: str) -> dict[str, Any] | None:
 
 
 def list_scan_summaries(*, limit: int = 20) -> list[dict[str, Any]]:
+    """Return scan summary rows, newest first.
+
+    DynamoDB applies ``Limit`` *before* ``FilterExpression``, so we must
+    paginate until enough ``#SUMMARY`` rows are collected (or the table is
+    exhausted). Otherwise ``?limit=1`` often returns an empty list even when
+    summaries exist.
+    """
     ddb = get_dynamodb()
     table = ddb.Table(settings.DYNAMODB_TABLE_NAME)
-    resp = table.scan(
-        FilterExpression="resource_id = :s",
-        ExpressionAttributeValues={":s": "#SUMMARY"},
-        Limit=limit,
-    )
-    items = resp.get("Items", [])
+
+    items: list[dict[str, Any]] = []
+    scan_kwargs: dict[str, Any] = {
+        "FilterExpression": "resource_id = :s",
+        "ExpressionAttributeValues": {":s": "#SUMMARY"},
+    }
+
+    while True:
+        resp = table.scan(**scan_kwargs)
+        items.extend(resp.get("Items", []))
+        if len(items) >= limit or "LastEvaluatedKey" not in resp:
+            break
+        scan_kwargs["ExclusiveStartKey"] = resp["LastEvaluatedKey"]
+
     items.sort(key=lambda x: x.get("detected_at", ""), reverse=True)
     return items[:limit]
