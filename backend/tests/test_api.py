@@ -139,7 +139,60 @@ class TestScanEndpoints:
         assert len(data["drift_events"]) == 1
         assert data["drift_events"][0]["resource_id"] == "i-1"
         assert data["drift_events"][0]["attribute"] == "instance_type"
+        assert data["drift_events"][0]["severity"] == "high"
         mock_run_scan.assert_called_once_with(resource_types=None)
+
+    @patch("app.api.scan.run_scan")
+    def test_severity_tiers_high_medium_low(self, mock_run_scan):
+        """Attribute name maps to high / medium / low for demo-friendly filtering."""
+        mock_run_scan.return_value = {
+            "summary": {
+                "tf_resources": 3,
+                "live_resources": 3,
+                "drifted": 3,
+                "missing_in_live": 0,
+                "missing_in_tf": 0,
+            },
+            "drifted": {
+                "i-1": {
+                    "resource_type": "aws_instance",
+                    "resource_id": "i-1",
+                    "differences": {
+                        "instance_type": {
+                            "tf_value": "t3.micro",
+                            "live_value": "t3.large",
+                        },
+                        "tags": {
+                            "tf_value": {"Name": "old"},
+                            "live_value": {"Name": "new"},
+                        },
+                    },
+                    "only_in_live": [],
+                    "only_in_tf": [],
+                },
+                "demo-role": {
+                    "resource_type": "aws_iam_role",
+                    "resource_id": "demo-role",
+                    "differences": {
+                        "max_session_duration": {
+                            "tf_value": "3600",
+                            "live_value": "7200",
+                        }
+                    },
+                    "only_in_live": [],
+                    "only_in_tf": [],
+                },
+            },
+            "missing_in_live": [],
+            "missing_in_tf": [],
+        }
+
+        response = client.post(f"{API_PREFIX}/scan/trigger", json={"dry_run": True})
+        assert response.status_code == 200
+        by_attr = {e["attribute"]: e["severity"] for e in response.json()["drift_events"]}
+        assert by_attr["instance_type"] == "high"
+        assert by_attr["max_session_duration"] == "medium"
+        assert by_attr["tags"] == "low"
 
     @patch("app.api.scan.run_scan")
     def test_trigger_dry_run_with_resource_types(self, mock_run_scan):
