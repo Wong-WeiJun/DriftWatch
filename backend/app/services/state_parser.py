@@ -28,8 +28,12 @@ def _extract_by_type(res_type: str, attrs: dict[str, Any]) -> dict[str, Any]:
         out["ami"] = attrs.get("ami", "")
         out["subnet_id"] = attrs.get("subnet_id", "")
         out["key_name"] = attrs.get("key_name", "")
-        out["public_ip"] = attrs.get("public_ip", "")
-        out["private_ip"] = attrs.get("private_ip", "")
+        # Only emit IPs when present — empty defaults would otherwise become
+        # TF-only fields the live scanner doesn't return (blank Expected→Actual).
+        if attrs.get("public_ip"):
+            out["public_ip"] = attrs["public_ip"]
+        if attrs.get("private_ip"):
+            out["private_ip"] = attrs["private_ip"]
         out["state"] = attrs.get("instance_state", attrs.get("state", ""))
 
     elif res_type == "aws_s3_bucket":
@@ -114,7 +118,11 @@ def _extract_by_type(res_type: str, attrs: dict[str, Any]) -> dict[str, Any]:
         out["name"] = attrs.get("name", attrs.get("id", ""))
         out["path"] = attrs.get("path", "/")
         out["max_session_duration"] = str(attrs.get("max_session_duration", 3600))
-        out["assume_role_policy"] = attrs.get("assume_role_policy", "")
+        # Don't invent an empty policy — live scanner doesn't return this field,
+        # and an empty default becomes a blank Expected→Actual drift row.
+        policy = attrs.get("assume_role_policy")
+        if policy not in (None, ""):
+            out["assume_role_policy"] = policy
 
     elif res_type == "aws_iam_role_policy_attachment":
         out["role"] = attrs.get("role", "")
