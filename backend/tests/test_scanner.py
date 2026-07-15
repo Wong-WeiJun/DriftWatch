@@ -75,6 +75,10 @@ class TestGetEc2:
                                 "SubnetId": "subnet-1",
                                 "VpcId": "vpc-1",
                                 "KeyName": "my-key",
+                                "Tags": [
+                                    {"Key": "Name", "Value": "web"},
+                                    {"Key": "Env", "Value": "dev"},
+                                ],
                             }
                         ]
                     }
@@ -94,6 +98,36 @@ class TestGetEc2:
         assert result["i-123"]["subnet_id"] == "subnet-1"
         assert result["i-123"]["vpc_id"] == "vpc-1"
         assert result["i-123"]["key_name"] == "my-key"
+        assert result["i-123"]["tags"] == {"Name": "web", "Env": "dev"}
+
+    @patch("app.services.scanner._client")
+    def test_single_instance_without_tags(self, mock_client):
+        mock_ec2 = MagicMock()
+        mock_paginator = MagicMock()
+        mock_paginator.paginate.return_value = [
+            {
+                "Reservations": [
+                    {
+                        "Instances": [
+                            {
+                                "InstanceId": "i-123",
+                                "InstanceType": "t3.micro",
+                                "ImageId": "ami-abc",
+                                "State": {"Name": "running"},
+                                "SubnetId": "subnet-1",
+                                "VpcId": "vpc-1",
+                                "KeyName": "my-key",
+                            }
+                        ]
+                    }
+                ]
+            }
+        ]
+        mock_ec2.get_paginator.return_value = mock_paginator
+        mock_client.return_value = mock_ec2
+
+        result = get_ec2()
+        assert "tags" not in result["i-123"]
 
     @patch("app.services.scanner._client")
     def test_multiple_instances_across_reservations(self, mock_client):
@@ -319,7 +353,7 @@ class TestGetSecurityGroups:
         assert "sg-123" in result
         assert result["sg-123"]["_type"] == "aws_security_group"
         assert result["sg-123"]["name"] == "web_sg"
-        assert result["sg-123"]["desc"] == "Web security group"
+        assert result["sg-123"]["description"] == "Web security group"
         assert result["sg-123"]["vpc_id"] == "vpc-1"
         assert result["sg-123"]["ingress_rule_count"] == "1"
         assert result["sg-123"]["egress_rule_count"] == "1"
