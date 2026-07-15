@@ -150,6 +150,16 @@ class TestCompareSingle:
             "live_value": None,
         }
 
+    def test_only_in_tf_skips_empty_defaults(self):
+        """Blank TF-only attrs (e.g. assume_role_policy="") must not become drifts."""
+        tf_entry = {"ami": "ami-123", "assume_role_policy": "", "public_ip": ""}
+        live_entry = {"ami": "ami-123"}
+        info = compare_single("aws_instance", "i-1", tf_entry, live_entry)
+        assert info.only_in_tf == {"assume_role_policy", "public_ip"}
+        assert "assume_role_policy" not in info.differences
+        assert "public_ip" not in info.differences
+        assert info.differences == {}
+
     def test_mixed_drift_and_extra(self):
         tf_entry = {"ami": "ami-123", "type": "t3.micro", "key_name": "key1"}
         live_entry = {"ami": "ami-999", "type": "t3.micro", "public_ip": "1.2.3.4"}
