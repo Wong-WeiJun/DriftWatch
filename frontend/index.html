@@ -235,7 +235,7 @@
     try {
       const [driftsRes, scansRes] = await Promise.all([
         fetch(`${API_BASE}/api/v1/drifts/events?limit=200`),
-        fetch(`${API_BASE}/api/v1/drifts/scans?limit=1`),
+        fetch(`${API_BASE}/api/v1/drifts/scans?limit=5`),
       ]);
 
       allDrifts = await driftsRes.json();
@@ -255,9 +255,15 @@
     document.getElementById('stat-high').textContent   = drifts.filter(d => d.severity === 'high').length;
     document.getElementById('stat-medium').textContent = drifts.filter(d => d.severity === 'medium').length;
     document.getElementById('stat-resources').textContent = lastScan?.resource_scanned ?? '—';
-    document.getElementById('stat-last-scan').textContent = lastScan
-      ? new Date(lastScan.detected_at).toLocaleString()
-      : '—';
+
+    const lastScanEl = document.getElementById('stat-last-scan');
+    const ts = lastScan?.detected_at || lastScan?.finished_at || lastScan?.started_at;
+    if (!ts) {
+      lastScanEl.textContent = '—';
+      return;
+    }
+    const parsed = new Date(ts);
+    lastScanEl.textContent = Number.isNaN(parsed.getTime()) ? String(ts) : parsed.toLocaleString();
   }
 
   function renderTable(drifts) {
@@ -317,6 +323,25 @@
 
   // ── Events ──────────────────────────────────────────────────────────────────
 
+  async function waitForScan(scanId, { attempts = 24, delayMs = 2500 } = {}) {
+    for (let i = 1; i <= attempts; i++) {
+      setStatus(`Waiting for scan ${scanId.slice(0, 8)}… (${i}/${attempts})`);
+      try {
+        const res = await fetch(`${API_BASE}/api/v1/drifts/scans/${scanId}`);
+        if (res.ok) {
+          const summary = await res.json();
+          if (summary.status && summary.status !== 'queued') {
+            return summary;
+          }
+        }
+      } catch (_) {
+        // Keep polling through transient errors while the scan is running.
+      }
+      await new Promise(r => setTimeout(r, delayMs));
+    }
+    return null;
+  }
+
   document.getElementById('btn-scan').addEventListener('click', async () => {
     const btn = document.getElementById('btn-scan');
     btn.disabled = true;
@@ -330,8 +355,21 @@
         body: JSON.stringify({ dry_run: false }),
       });
       const data = await res.json();
-      setStatus(`Scan queued (ID: ${data.scan_id?.slice(0, 8)}). Refreshing in 5s...`);
-      setTimeout(fetchDrifts, 5000);
+      if (!res.ok || !data.scan_id) {
+        throw new Error(data.detail || data.message || 'Scan trigger failed');
+      }
+
+      setStatus(`Scan queued (ID: ${data.scan_id.slice(0, 8)}). Waiting for results…`);
+      const summary = await waitForScan(data.scan_id);
+      await fetchDrifts();
+
+      if (summary) {
+        // Ensure Last Scan / Resources reflect this run even if list ordering lags.
+        updateStats(allDrifts, summary);
+        setStatus(`Scan complete — ${summary.drifts_found ?? 0} drift(s), ${summary.resource_scanned ?? 0} resources`);
+      } else {
+        setStatus('Scan still running — click Refresh in a moment');
+      }
     } catch (err) {
       setStatus(`Scan trigger failed: ${err.message}`);
     } finally {
