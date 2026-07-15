@@ -31,7 +31,27 @@ _HIGH_SEVERITY_ATTRS = {
     "ami",
     "ingress_rule_count",
     "egress_rule_count",
+    "block_public_acls",
+    "block_public_policy",
 }
+
+# Cosmetic / operational noise — still worth showing, but not pages-of-red.
+_LOW_SEVERITY_ATTRS = {
+    "tags",
+    "path",
+    "key_name",
+    "state",
+    "name",
+    "description",
+}
+
+
+def _severity_for_attr(attr: str) -> str:
+    if attr in _HIGH_SEVERITY_ATTRS:
+        return "high"
+    if attr in _LOW_SEVERITY_ATTRS:
+        return "low"
+    return "medium"
 
 
 def _convert_report_to_scan_result(report: dict[str, Any], scan_id: str) -> ScanResult:
@@ -53,7 +73,7 @@ def _convert_report_to_scan_result(report: dict[str, Any], scan_id: str) -> Scan
                     attribute=attr,
                     expected="" if tf_val is None else str(tf_val),
                     actual="" if live_val is None else str(live_val),
-                    severity="high" if attr in _HIGH_SEVERITY_ATTRS else "medium",
+                    severity=_severity_for_attr(attr),
                 )
             )
 
