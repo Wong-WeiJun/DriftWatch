@@ -19,6 +19,17 @@ def _client(service: str) -> boto3.client:
     return boto3.client(service, **kwargs)
 
 
+def _tags_dict(tag_list: list[dict[str, str]] | None) -> dict[str, str]:
+    """Convert AWS Tag list [{"Key": k, "Value": v}] into a plain dict."""
+    if not tag_list:
+        return {}
+    return {
+        t["Key"]: t.get("Value", "")
+        for t in tag_list
+        if isinstance(t, dict) and "Key" in t
+    }
+
+
 def get_ec2() -> dict[str, dict[str, Any]]:
     ec2 = _client("ec2")
     instances = {}
@@ -27,7 +38,8 @@ def get_ec2() -> dict[str, dict[str, Any]]:
         for reservation in page["Reservations"]:
             for instance in reservation["Instances"]:
                 iid = instance["InstanceId"]
-                instances[iid] = {
+                tags = _tags_dict(instance.get("Tags"))
+                entry: dict[str, Any] = {
                     "_type": "aws_instance",
                     "id": iid,
                     "instance_type": instance.get("InstanceType", ""),
@@ -37,6 +49,9 @@ def get_ec2() -> dict[str, dict[str, Any]]:
                     "vpc_id": instance.get("VpcId", ""),
                     "key_name": instance.get("KeyName", ""),
                 }
+                if tags:
+                    entry["tags"] = tags
+                instances[iid] = entry
     return instances
 
 
@@ -59,7 +74,14 @@ def get_s3() -> dict[str, dict[str, Any]]:
         except Exception:
             pass
 
-        buckets[name] = {
+        tags: dict[str, str] = {}
+        try:
+            tag_resp = s3.get_bucket_tagging(Bucket=name)
+            tags = _tags_dict(tag_resp.get("TagSet"))
+        except Exception:
+            pass
+
+        entry: dict[str, Any] = {
             "_type": "aws_s3_bucket",
             "id": name,
             "bucket": name,
@@ -67,6 +89,9 @@ def get_s3() -> dict[str, dict[str, Any]]:
             "block_public_acls": str(public_block.get("BlockPublicAcls", False)),
             "block_public_policy": str(public_block.get("BlockPublicPolicy", False)),
         }
+        if tags:
+            entry["tags"] = tags
+        buckets[name] = entry
     return buckets
 
 
@@ -77,15 +102,19 @@ def get_security_groups() -> dict[str, dict[str, Any]]:
     for page in paginator.paginate():
         for sg in page["SecurityGroups"]:
             sid = sg["GroupId"]
-            sgs[sid] = {
+            tags = _tags_dict(sg.get("Tags"))
+            entry: dict[str, Any] = {
                 "_type": "aws_security_group",
                 "id": sid,
                 "name": sg.get("GroupName", ""),
-                "desc": sg.get("Description", ""),
+                "description": sg.get("Description", ""),
                 "vpc_id": sg.get("VpcId", ""),
                 "ingress_rule_count": str(len(sg.get("IpPermissions", []))),
                 "egress_rule_count": str(len(sg.get("IpPermissionsEgress", []))),
             }
+            if tags:
+                entry["tags"] = tags
+            sgs[sid] = entry
     return sgs
 
 
@@ -96,13 +125,22 @@ def get_iam_roles() -> dict[str, dict[str, Any]]:
     for page in paginator.paginate():
         for role in page["Roles"]:
             name = role["RoleName"]
-            roles[name] = {
+            tags: dict[str, str] = {}
+            try:
+                tag_resp = iam.list_role_tags(RoleName=name)
+                tags = _tags_dict(tag_resp.get("Tags"))
+            except Exception:
+                pass
+            entry: dict[str, Any] = {
                 "_type": "aws_iam_role",
                 "id": name,
                 "name": name,
                 "path": role.get("Path", "/"),
                 "max_session_duration": str(role.get("MaxSessionDuration", 3600)),
             }
+            if tags:
+                entry["tags"] = tags
+            roles[name] = entry
     return roles
 
 
