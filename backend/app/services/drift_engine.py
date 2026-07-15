@@ -94,7 +94,12 @@ def compare_single(
     differences = compute_drift(tf_attrs, live_attrs)
 
     for k in only_in_tf:
-        differences[k] = {"tf_value": tf_entry[k], "live_value": None}
+        tf_val = tf_entry[k]
+        # Empty TF-only fields (defaults the live scanner never returns) are
+        # not meaningful drift — skip so the dashboard doesn't show "+ −".
+        if normalise(tf_val) == "":
+            continue
+        differences[k] = {"tf_value": tf_val, "live_value": None}
 
     return DriftInfo(
         resource_type=resource_type,
