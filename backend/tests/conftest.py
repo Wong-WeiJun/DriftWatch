@@ -81,7 +81,7 @@ def mock_live_resources():
                 "_type": "aws_security_group",
                 "id": "sg-123",
                 "name": "web_sg",
-                "desc": "Web security group",
+                "description": "Web security group",
                 "vpc_id": "vpc-123",
                 "ingress_rule_count": "2",
                 "egress_rule_count": "1",
