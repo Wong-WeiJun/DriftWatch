@@ -173,6 +173,10 @@
       <div class="value yellow" id="stat-medium">—</div>
     </div>
     <div class="stat-card">
+      <div class="label">Low</div>
+      <div class="value green" id="stat-low">—</div>
+    </div>
+    <div class="stat-card">
       <div class="label">Last Scan</div>
       <div class="value blue" id="stat-last-scan" style="font-size:1rem;line-height:2">—</div>
     </div>
@@ -254,6 +258,7 @@
     document.getElementById('stat-total').textContent  = drifts.length;
     document.getElementById('stat-high').textContent   = drifts.filter(d => d.severity === 'high').length;
     document.getElementById('stat-medium').textContent = drifts.filter(d => d.severity === 'medium').length;
+    document.getElementById('stat-low').textContent    = drifts.filter(d => d.severity === 'low').length;
     document.getElementById('stat-resources').textContent = lastScan?.resource_scanned ?? '—';
 
     const lastScanEl = document.getElementById('stat-last-scan');
