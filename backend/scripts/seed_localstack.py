@@ -140,40 +140,50 @@ def ensure_security_groups(ec2, vpc_id: str) -> list[dict[str, Any]]:
                 ]
             )["SecurityGroups"]
             if existing:
-                groups.append(existing[0])
-                continue
-            sg = ec2.create_security_group(
-                GroupName=name,
-                Description=f"Demo security group {i}",
-                VpcId=vpc_id,
-                TagSpecifications=[
-                    {
-                        "ResourceType": "security-group",
-                        "Tags": [
-                            {"Key": "Name", "Value": name},
-                            {"Key": "driftwatch-demo", "Value": "true"},
-                        ],
-                    }
-                ],
-            )
-            # Add an ingress rule on even-numbered groups (live differs for odd ones in TF)
-            if i % 2 == 0:
-                ec2.authorize_security_group_ingress(
-                    GroupId=sg["GroupId"],
-                    IpPermissions=[
+                sg_detail = existing[0]
+            else:
+                sg = ec2.create_security_group(
+                    GroupName=name,
+                    Description=f"Demo security group {i}",
+                    VpcId=vpc_id,
+                    TagSpecifications=[
                         {
-                            "IpProtocol": "tcp",
-                            "FromPort": 443,
-                            "ToPort": 443,
-                            "IpRanges": [{"CidrIp": "0.0.0.0/0"}],
+                            "ResourceType": "security-group",
+                            "Tags": [
+                                {"Key": "Name", "Value": name},
+                                {"Key": "driftwatch-demo", "Value": "true"},
+                            ],
                         }
                     ],
                 )
-            detail = ec2.describe_security_groups(GroupIds=[sg["GroupId"]])[
-                "SecurityGroups"
-            ][0]
-            groups.append(detail)
-            print(f"Created SG {name}")
+                print(f"Created SG {name}")
+                sg_detail = ec2.describe_security_groups(GroupIds=[sg["GroupId"]])[
+                    "SecurityGroups"
+                ][0]
+
+            # First SG always has an open 443 rule so TF can claim 0 ingress → high drift.
+            # Other odd-numbered groups get the same for variety in live data.
+            wants_ingress = i == 1 or i % 2 == 1
+            if wants_ingress and not sg_detail.get("IpPermissions"):
+                try:
+                    ec2.authorize_security_group_ingress(
+                        GroupId=sg_detail["GroupId"],
+                        IpPermissions=[
+                            {
+                                "IpProtocol": "tcp",
+                                "FromPort": 443,
+                                "ToPort": 443,
+                                "IpRanges": [{"CidrIp": "0.0.0.0/0"}],
+                            }
+                        ],
+                    )
+                    sg_detail = ec2.describe_security_groups(
+                        GroupIds=[sg_detail["GroupId"]]
+                    )["SecurityGroups"][0]
+                except ClientError:
+                    pass
+
+            groups.append(sg_detail)
         except ClientError as e:
             print(f"SG {name} skipped: {e}")
     return groups
@@ -181,7 +191,7 @@ def ensure_security_groups(ec2, vpc_id: str) -> list[dict[str, Any]]:
 
 def ensure_s3_buckets(s3) -> list[str]:
     names = [f"demo-app-bucket-{i:02d}" for i in range(1, NUM_S3 + 1)]
-    for name in names:
+    for i, name in enumerate(names):
         try:
             s3.create_bucket(
                 Bucket=name,
@@ -193,7 +203,7 @@ def ensure_s3_buckets(s3) -> list[str]:
             if code not in ("BucketAlreadyExists", "BucketAlreadyOwnedByYou"):
                 print(f"S3 {name} skipped: {e}")
                 continue
-        # Public access block — TF will intentionally mismatch on bucket 03
+        # Public access block — TF intentionally mismatches on bucket 03
         try:
             s3.put_public_access_block(
                 Bucket=name,
@@ -206,6 +216,26 @@ def ensure_s3_buckets(s3) -> list[str]:
             )
         except ClientError:
             pass
+        # Tag every bucket; bucket 06 gets an Extra live tag for a low-severity tag drift
+        try:
+            tag_set = [
+                {"Key": "Name", "Value": name},
+                {"Key": "driftwatch-demo", "Value": "true"},
+            ]
+            if i == 5:
+                tag_set.append({"Key": "Owner", "Value": "platform-team"})
+            s3.put_bucket_tagging(Bucket=name, Tagging={"TagSet": tag_set})
+        except ClientError:
+            pass
+        # Enable versioning on bucket 05 so TF (Disabled) diverges → medium
+        if i == 4:
+            try:
+                s3.put_bucket_versioning(
+                    Bucket=name,
+                    VersioningConfiguration={"Status": "Enabled"},
+                )
+            except ClientError:
+                pass
     return names
 
 
@@ -254,26 +284,49 @@ def build_tfstate(
     roles: list[dict[str, Any]],
     subnet_id: str,
 ) -> dict[str, Any]:
-    """Build a TF state that mostly matches live, with intentional drifts."""
+    """Build a TF state that mostly matches live, with intentional drifts.
+
+    Demo drift matrix (so the dashboard shows high / medium / low):
+      HIGH   — EC2 instance_type, EC2 ami, SG ingress_rule_count, S3 block_public_acls
+      MEDIUM — IAM max_session_duration, S3 versioning
+      LOW    — EC2 tags, S3 tags, IAM path
+    """
     resources: list[dict[str, Any]] = []
 
-    # --- EC2: match live IDs; drift instance #2 type (TF says t3.micro, live may be t3.small)
+    # --- EC2: match live IDs; intentional attribute drifts below
     for i, inst in enumerate(instances):
         iid = inst["InstanceId"]
         live_type = inst.get("InstanceType", "t3.micro")
-        # Intentional drift on the second instance
+        live_ami = inst.get("ImageId", "ami-0demo000000000001")
+        live_tags = {
+            t["Key"]: t["Value"] for t in inst.get("Tags", []) if "Key" in t
+        } or {"Name": f"demo-web-{i + 1:02d}", "driftwatch-demo": "true"}
+
+        # HIGH: instance #2 type (TF says t3.micro, live is t3.small)
         tf_type = "t3.micro" if i == 1 else live_type
+        # HIGH: instance #3 AMI mismatch
+        tf_ami = "ami-0stale00000000001" if i == 2 else live_ami
+        # LOW: instance #4 Name tag drifted in the console
+        if i == 3:
+            tf_tags = {
+                "Name": f"demo-web-{i + 1:02d}-old",
+                "driftwatch-demo": "true",
+            }
+        else:
+            tf_tags = live_tags
+
         resources.append(
             _tf_resource(
                 "aws_instance",
                 f"web_{i + 1:02d}",
                 {
                     "id": iid,
-                    "ami": inst.get("ImageId", "ami-0demo000000000001"),
+                    "ami": tf_ami,
                     "instance_type": tf_type,
+                    "instance_state": inst.get("State", {}).get("Name", "running"),
                     "subnet_id": inst.get("SubnetId", subnet_id),
                     "key_name": inst.get("KeyName", ""),
-                    "tags": {"Name": f"demo-web-{i + 1:02d}"},
+                    "tags": tf_tags,
                 },
             )
         )
@@ -287,6 +340,7 @@ def build_tfstate(
                 "id": "i-tfonly000000001",
                 "ami": "ami-0demo000000000001",
                 "instance_type": "t3.medium",
+                "instance_state": "running",
                 "subnet_id": subnet_id,
                 "key_name": "",
                 "tags": {"Name": "retired-worker"},
@@ -298,7 +352,10 @@ def build_tfstate(
     for i, sg in enumerate(security_groups):
         sid = sg["GroupId"]
         live_ingress = len(sg.get("IpPermissions", []))
-        # TF claims 0 ingress for first SG even if live has rules (or vice versa)
+        live_tags = {
+            t["Key"]: t["Value"] for t in sg.get("Tags", []) if "Key" in t
+        }
+        # HIGH: TF claims 0 ingress for first SG even if live has rules
         tf_ingress = [] if i == 0 else ([{"from_port": 443}] * live_ingress)
         resources.append(
             _tf_resource(
@@ -312,7 +369,7 @@ def build_tfstate(
                     "vpc_id": sg.get("VpcId", ""),
                     "ingress": tf_ingress,
                     "egress": sg.get("IpPermissionsEgress", []),
-                    "tags": {"Name": sg.get("GroupName", "")},
+                    "tags": live_tags or {"Name": sg.get("GroupName", "")},
                 },
             )
         )
@@ -320,8 +377,12 @@ def build_tfstate(
     # --- S3: include versioning / public-block fields the scanner compares
     # Leave the last live bucket out of TF → missing_in_tf (orphan)
     for i, name in enumerate(buckets[:-1]):
-        # Drift public ACLs on bucket index 2 (scanner emits Python str(bool) casing)
+        # HIGH: public ACLs on bucket index 2 (TF False, live True)
         block_acls = "False" if i == 2 else "True"
+        # MEDIUM: versioning — TF Disabled, live Enabled on bucket index 4
+        versioning = "Disabled"
+        # LOW: tags — TF missing Owner that live has on bucket index 5
+        tags: dict[str, str] = {"Name": name, "driftwatch-demo": "true"}
         resources.append(
             _tf_resource(
                 "aws_s3_bucket",
@@ -330,10 +391,10 @@ def build_tfstate(
                     "id": name,
                     "bucket": name,
                     "arn": f"arn:aws:s3:::{name}",
-                    "versioning": "Disabled",
+                    "versioning": versioning,
                     "block_public_acls": block_acls,
                     "block_public_policy": "True",
-                    "tags": {"Name": name},
+                    "tags": tags,
                 },
             )
         )
@@ -355,11 +416,16 @@ def build_tfstate(
         )
     )
 
-    # --- IAM roles: match live; drift max_session_duration on role 3
+    # --- IAM roles: match live; intentional drifts on roles 3 and 5
     for i, role in enumerate(roles):
         name = role["RoleName"]
         live_duration = int(role.get("MaxSessionDuration", 3600))
+        live_path = role.get("Path", "/demo/")
+        # MEDIUM: max_session_duration on role 3
         tf_duration = 7200 if i == 2 else live_duration
+        # LOW: path on role 5
+        tf_path = "/legacy/" if i == 4 else live_path
+        tags = {"Name": name, "driftwatch-demo": "true"}
         resources.append(
             _tf_resource(
                 "aws_iam_role",
@@ -367,10 +433,9 @@ def build_tfstate(
                 {
                     "id": name,
                     "name": name,
-                    "path": role.get("Path", "/demo/"),
+                    "path": tf_path,
                     "max_session_duration": tf_duration,
-                    "assume_role_policy": role.get("AssumeRolePolicyDocument", ""),
-                    "tags": {"Name": name},
+                    "tags": tags,
                 },
             )
         )
