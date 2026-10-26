@@ -2,7 +2,7 @@
 
 > Automated cloud infrastructure drift detection for AWS + Terraform
 
-DriftWatch continuously compares live AWS resources against your Terraform state, surfacing configuration drift within minutes via an interactive dashboard and email alerts. Perfect for platform teams that need visibility into when engineers make manual console changes.
+DriftWatch continuously compares live AWS resources against your Terraform state, surfacing configuration drift every 6 hours via an interactive dashboard and email alerts. Perfect for platform teams that need visibility into when engineers make manual console changes.
 
 ---
 
@@ -46,7 +46,7 @@ DriftWatch closes this visibility gap.
 
 | Layer | Technology |
 |---|---|
-| API | Python 3.13, FastAPI, Pydantic, boto3 |
+| API | Python 3.12 slim, FastAPI, Pydantic, boto3 |
 | Infrastructure | Terraform (modular), AWS ECS Fargate, ALB, DynamoDB, S3, SNS, VPC |
 | CI/CD | GitHub Actions (OIDC authentication — no long-lived AWS keys) |
 | Frontend | Vanilla HTML/JS, dark theme, served from FastAPI |
@@ -149,12 +149,12 @@ driftwatch/
 ### Prerequisites
 
 - Docker & Docker Compose
-- (Optional) Python 3.13 for running tests natively
+- (Optional) Python 3.12 slim for running tests natively
 
 ### Quick Start
 
 ```bash
-git clone https://github.com/<your-username>/driftwatch.git
+git clone https://github.com/Wong-WeiJun/driftwatch.git
 cd driftwatch
 
 # Start everything — LocalStack, DynamoDB init, S3 init, FastAPI, Prometheus, Grafana
